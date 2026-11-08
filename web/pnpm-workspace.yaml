@@ -1,0 +1,6 @@
+# 依赖缓存放在本项目的 A-maintenance/ 里，不用机器上的公共缓存
+storeDir: ../A-maintenance/local-pnpm-store
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.104.3'
+  - '@tanstack/react-query@5.104.3'
+saveExact: true

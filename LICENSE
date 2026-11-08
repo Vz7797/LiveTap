@@ -1,0 +1,20 @@
+Copyright (c) 2026 LiveTap authors (https://github.com/Vz7797/LiveTap). All rights reserved.
+
+This software and its source code are proprietary and confidential.
+No part of it may be copied, modified, distributed, sublicensed or used,
+in whole or in part, without prior written permission from the copyright
+holder.
+
+Third-party components included in this repository remain under their own
+licenses; see THIRD_PARTY_NOTICES.md. In particular, third_party/douyinLive
+is distributed under the MIT License, whose original LICENSE file is kept in
+that directory.
+
+----
+
+版权所有 (c) 2026 LiveTap 作者（https://github.com/Vz7797/LiveTap）。保留所有权利。
+
+本软件及其源代码为私有、保密资料。未经版权方事先书面许可，不得以任何形式
+复制、修改、分发、再许可或使用其全部或部分内容。
+
+仓库中包含的第三方组件仍适用其各自的许可，详见 THIRD_PARTY_NOTICES.md。

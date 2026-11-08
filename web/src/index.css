@@ -1,0 +1,474 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+@import "@fontsource/geist-mono/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * 设计令牌（设计文档 11.2，v0.5）
+ * 浅色云白、深色蓝墨打底；状态、标签、图标和图表按用途着色。
+ * 颜色干净、中等饱和、不发光：克制靠“用得少”，不靠“调灰调脏”。
+ * 弹幕用品牌黄，点赞用柔和玫瑰色；停用状态保留中性灰。
+ */
+:root {
+  --radius: 1rem;
+
+  /* 浅色 */
+  --background: #f5f8fc;
+  --foreground: #1c2b42;
+  --card: #ffffff;
+  --card-foreground: #1c2b42;
+  --popover: #ffffff;
+  --popover-foreground: #1c2b42;
+  --elevated: #ffffff;
+  --primary: #f2c14e;
+  --primary-foreground: #1a1404;
+  --secondary: #eaf1f9;
+  --secondary-foreground: #1c2b42;
+  --muted: #eef4fa;
+  --muted-foreground: #58677c;
+  --faint-foreground: #66758a;
+  --accent: #eaf2fc;
+  --accent-foreground: #1c2b42;
+  --destructive: #d9434b;
+  --border: rgb(24 24 27 / 0.08);
+  --border-strong: rgb(24 24 27 / 0.15);
+  --input: rgb(24 24 27 / 0.12);
+  --ring: #e0a800;
+  --grid-dot: rgb(24 24 27 / 0.07);
+  --shadow-card: 0 1px 2px rgb(24 24 27 / 0.04), 0 6px 20px -12px rgb(24 24 27 / 0.1);
+  /* 普通数据图形用浅蓝；灰色只保留给停用状态。 */
+  --c-graph: #7da4c9;
+  --c-bar: rgb(47 128 208 / 0.18);
+
+  /* 功能色：图形填充 */
+  --c-chat: #e0a800;
+  --c-member: #2f80d0;
+  --c-like: #d58daa;
+  --c-social: #8a63e6;
+  --c-gift: #dc5a3c;
+  --c-info: #2f80d0;
+  --c-ok: #1f9d63;
+  --c-warn: #d48806;
+  --c-err: #d9434b;
+  --c-idle: #a1a1aa;
+  /* 功能色：文字（加深，保证白底对比度） */
+  --ink-chat: #8a6400;
+  --ink-member: #1f63a8;
+  --ink-like: #a3446c;
+  --ink-social: #6a49c9;
+  --ink-gift: #b8432a;
+  --ink-info: #1f63a8;
+  --ink-ok: #16794a;
+  --ink-warn: #a05f00;
+  --ink-err: #b8323a;
+  --ink-idle: #63636d;
+  --ink-brand: #8a6400;
+
+  --tint: 10%;
+  /* 堆叠色带填充透明度：深色底上透明度太低会发灰发脏，所以深色调高 */
+  --band-main: 0.55;
+  --band: 0.4;
+}
+
+.dark {
+  --background: #101724;
+  --foreground: #edf2fa;
+  --card: #192234;
+  --card-foreground: #edf2fa;
+  --popover: #202d43;
+  --popover-foreground: #edf2fa;
+  --elevated: #202d43;
+  --primary: #f2c14e;
+  --primary-foreground: #1a1404;
+  --secondary: #26364e;
+  --secondary-foreground: #edf2fa;
+  --muted: #243249;
+  --muted-foreground: #adbcd1;
+  --faint-foreground: #96a7be;
+  --accent: #2a3b55;
+  --accent-foreground: #edf2fa;
+  --destructive: #e5636b;
+  --border: rgb(255 255 255 / 0.07);
+  --border-strong: rgb(255 255 255 / 0.13);
+  --input: rgb(255 255 255 / 0.1);
+  --ring: #f2c14e;
+  --grid-dot: rgb(255 255 255 / 0.05);
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 10px 28px -16px rgb(0 0 0 / 0.6);
+  --c-graph: #7094bd;
+  --c-bar: rgb(64 150 224 / 0.22);
+
+  --c-chat: #f2c14e;
+  --c-member: #4096e0;
+  --c-like: #bd7f9b;
+  --c-social: #9a7cf0;
+  --c-gift: #e0644a;
+  --c-info: #4096e0;
+  --c-ok: #3fb27f;
+  --c-warn: #e5a03a;
+  --c-err: #e5636b;
+  --c-idle: #71717a;
+  --ink-chat: #f2c14e;
+  --ink-member: #6aaeea;
+  --ink-like: #edb3cc;
+  --ink-social: #b09cf5;
+  --ink-gift: #ee8a70;
+  --ink-info: #6aaeea;
+  --ink-ok: #5cc596;
+  --ink-warn: #edb25a;
+  --ink-err: #ee8088;
+  --ink-idle: #a1a1aa;
+  --ink-brand: #f2c14e;
+
+  --tint: 14%;
+  --band-main: 0.76;
+  --band: 0.6;
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "HarmonyOS Sans SC", "Noto Sans SC", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 6px);
+  --radius-lg: calc(var(--radius) - 4px);
+  --radius-xl: var(--radius);
+  --radius-2xl: calc(var(--radius) + 4px);
+  --radius-3xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-elevated: var(--elevated);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chat: var(--c-chat);
+  --color-member: var(--c-member);
+  --color-like: var(--c-like);
+  --color-social: var(--c-social);
+  --color-gift: var(--c-gift);
+  --color-info: var(--c-info);
+  --color-ok: var(--c-ok);
+  --color-warn: var(--c-warn);
+  --color-err: var(--c-err);
+  --color-idle: var(--c-idle);
+  --color-graph: var(--c-graph);
+  --color-bar: var(--c-bar);
+  --color-ink-chat: var(--ink-chat);
+  --color-ink-member: var(--ink-member);
+  --color-ink-like: var(--ink-like);
+  --color-ink-social: var(--ink-social);
+  --color-ink-gift: var(--ink-gift);
+  --color-ink-info: var(--ink-info);
+  --color-ink-ok: var(--ink-ok);
+  --color-ink-warn: var(--ink-warn);
+  --color-ink-err: var(--ink-err);
+  --color-ink-idle: var(--ink-idle);
+  --color-ink-brand: var(--ink-brand);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+    /* 打开浮层锁滚动时页面宽度不变，避免整页重排 */
+    scrollbar-gutter: stable;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+    overflow-x: hidden;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--c-chat) 40%, transparent);
+  }
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 彩色图标底块：同色 12% 透明底 + 同色图标（设计文档 11.2） */
+@utility tint-* {
+  background-color: color-mix(in oklab, --value(--color-*) var(--tint), transparent);
+  color: --value(--color-ink-*);
+}
+
+@utility dot-grid {
+  background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* 采集状态与装饰保持静态；只有操作中的加载指示器允许短暂循环。 */
+/* 主题切换的圆形扩散（View Transitions） */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-vt="theme"]::view-transition-new(root) {
+  animation: theme-reveal 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes theme-reveal {
+  from { clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 0%)); }
+  to { clip-path: circle(var(--vt-r, 150vmax) at var(--vt-x, 50%) var(--vt-y, 0%)); }
+}
+
+/* 尊重“减少动态效果” */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* 精简模式只保留操作反馈；系统减少动态效果始终覆盖标准模式。 */
+html[data-motion="minimal"] *,
+html[data-motion="minimal"] *::before,
+html[data-motion="minimal"] *::after {
+  scroll-behavior: auto !important;
+}
+
+/* 总览 Bento：用命名区域排版，宽屏换成更多列，保证每一行都铺满、不留空洞 */
+.overview-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-areas:
+    "hero hero hero hero hero hero"
+    "c1 c1 c2 c2 c3 c3"
+    "cap cap cap cap cap cap"
+    "bud bud bud bud bud bud"
+    "rate rate rate rate rate rate"
+    "comp comp comp comp comp comp"
+    "radar radar radar radar radar radar"
+    "res res res res res res"
+    "time time time time time time"
+    "top top top top top top"
+    "cli cli cli cli cli cli";
+}
+@media (min-width: 768px) {
+  .overview-grid {
+    grid-template-areas:
+      "hero hero hero hero hero hero"
+      "c1 c1 c2 c2 c3 c3"
+      "cap cap cap bud bud bud"
+      "rate rate rate rate rate rate"
+      "comp comp comp radar radar radar"
+      "res res res time time time"
+      "top top top top top top"
+      "cli cli cli cli cli cli";
+  }
+}
+@media (min-width: 1280px) {
+  .overview-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-areas:
+      "hero hero hero hero hero hero c1 c1 c2 c2 c3 c3"
+      "hero hero hero hero hero hero cap cap cap bud bud bud"
+      "rate rate rate rate rate rate rate rate comp comp comp comp"
+      "radar radar radar radar res res res res time time time time"
+      "top top top top top top top top cli cli cli cli";
+  }
+}
+@media (min-width: 1920px) {
+  .overview-grid {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    grid-template-areas:
+      "hero hero hero hero hero hero hero hero c1 c1 c1 c2 c2 c2 c3 c3 c3 comp comp comp comp comp comp comp"
+      "hero hero hero hero hero hero hero hero cap cap cap cap cap bud bud bud bud comp comp comp comp comp comp comp"
+      "rate rate rate rate rate rate rate rate rate rate rate rate rate rate rate rate top top top top top top top top"
+      "radar radar radar radar radar radar res res res res res res time time time time time time cli cli cli cli cli cli";
+  }
+}
+
+/*
+ * 弹出层（下拉菜单、头像菜单、弹窗）锁定滚动时，Radix 会给 body 加上与滚动条等宽的
+ * margin-right 作补偿；但 html 已经用 scrollbar-gutter: stable 预留了滚动条位置，
+ * 再补偿一次就会把整页往左挤 15 px（打开头像菜单时页面“撑开”）。这里取消重复补偿。
+ */
+html body[data-scroll-locked] {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  --removed-body-scroll-bar-size: 0px;
+}
+
+/* 标准动效下的页面进入：只做透明度，避免位移引起的重排 */
+.page-enter {
+  animation: page-enter 140ms ease-out both;
+}
+@keyframes page-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------------- 数据过渡：轻量、只用 transform / 少量属性，精简模式下也保留 ---------------- */
+/* 滚动数字（components/motion/rolling-number.tsx） */
+.roll-slot {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+}
+.roll-strip {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.roll-strip > span {
+  display: block;
+}
+.roll-animate {
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* 图表与进度：过渡时长与推送间隔（2.5 秒）对齐、缓入缓出，动画在两次推送之间连贯进行，
+   不会“动一下停一下”。只用于数值类属性；交互类变化（悬停等）另行设置更短的时长。 */
+/* 进度条、柱子：1.2 秒缓入缓出，明显是“滑过去”而不是跳；曲线另用图层连续流动 */
+.t-move {
+  transition: transform 1200ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+/* 少数只能改尺寸的元素（容量分段条）用短过渡，避免持续重排 */
+.t-flex {
+  transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.t-size {
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1), height 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.t-path {
+  transition: d 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* 仪表弧长只能在主线程逐帧计算，用短过渡；持续进行的动画只留给能交给合成线程的平移 */
+.t-dash {
+  transition: stroke-dasharray 700ms cubic-bezier(0.22, 1, 0.36, 1), stroke-dashoffset 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.t-dot {
+  transition: cy 2500ms linear;
+}
+.t-rect {
+  transition: y 700ms cubic-bezier(0.22, 1, 0.36, 1), height 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.t-tone {
+  transition: color 300ms ease, background-color 300ms ease, fill 300ms ease, stroke 300ms ease, opacity 300ms ease;
+}
+/* 同时带两个过渡类时必须合并：后写的 transition 简写会整个覆盖前一个，平移动画就没了 */
+.t-move.t-tone {
+  transition: transform 1200ms cubic-bezier(0.45, 0, 0.55, 1), color 300ms ease, background-color 300ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .roll-animate,
+  .t-move,
+  .t-flex,
+  .t-size,
+  .t-path,
+  .t-dot,
+  .t-rect,
+  .t-dash,
+  .t-tone {
+    transition: none;
+  }
+}
+
+/* ---------------- 滚动区域：细滚动条；放在 components 层，具体的 overflow-x/y 工具类可以覆盖 ---------------- */
+@layer components {
+  .scroll-area {
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  .scroll-area::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-area::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+  }
+  .scroll-area::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 排行榜：新上榜的行淡入上浮；“上升”标记弹出（overview TopRoomsCard） */
+.rank-enter {
+  animation: rank-enter 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes rank-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.rank-up {
+  animation: rank-up 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes rank-up {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-enter,
+  .rank-up {
+    animation: none;
+  }
+}
+
+/* 图标切换：淡入 + 轻微放大（kit IconTile / StatusPill） */
+.icon-swap {
+  animation: icon-swap 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes icon-swap {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-12deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-swap {
+    animation: none;
+  }
+}

@@ -1,0 +1,606 @@
+diff --git a/collector_hooks_test.go b/collector_hooks_test.go
+new file mode 100644
+index 0000000..67a2f42
+--- /dev/null
++++ b/collector_hooks_test.go
+@@ -0,0 +1,76 @@
++package douyinLive
++
++import (
++	"context"
++	"errors"
++	"github.com/gorilla/websocket"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestCollectorResponseHookRedirectRebuildAndWebSocket(t *testing.T) {
++	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path == "/redirect" {
++			http.Redirect(w, r, "/ok", 302)
++			return
++		}
++		if r.URL.Path == "/blocked" {
++			w.WriteHeader(403)
++			return
++		}
++		w.WriteHeader(204)
++	}))
++	defer ts.Close()
++	count := 0
++	blocked := errors.New("synthetic restriction")
++	dl, err := NewDouyinLiveWithOptions("123", nil, Options{AfterResponse: func(r *http.Response) error {
++		count++
++		if r.StatusCode == 403 {
++			return blocked
++		}
++		return nil
++	}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer dl.Close()
++	if _, err = dl.client.R().Get(ts.URL + "/redirect"); err != nil || count != 2 {
++		t.Fatal("redirect response skipped")
++	}
++	dl.rebuildHTTPClientAndHeaders()
++	if _, err = dl.client.R().Get(ts.URL + "/blocked"); !errors.Is(err, blocked) || count != 3 {
++		t.Fatal("response gate lost on rebuild")
++	}
++	_, resp, err := dl.dialUpstreamWebSocket(websocket.DefaultDialer, "ws"+strings.TrimPrefix(ts.URL, "http")+"/blocked", nil, 1)
++	closeWebSocketHandshakeResponse(resp)
++	if !errors.Is(err, blocked) || count != 4 {
++		t.Fatal("websocket rejection did not reach response hook")
++	}
++}
++
++func TestCollectorGuestProviderAndExplicitCookiePrecedence(t *testing.T) {
++	calls := 0
++	provider := func(ctx context.Context, fetch func(context.Context) (string, time.Time, error)) (string, error) {
++		calls++
++		return "synthetic-guest", nil
++	}
++	dl, err := NewDouyinLiveWithOptions("123", nil, Options{GuestTTWID: provider})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer dl.Close()
++	if err = dl.prepareRequestContextLocked(context.Background()); err != nil || calls != 1 || dl.cookieValue("ttwid") != "synthetic-guest" {
++		t.Fatal("guest provider not used")
++	}
++	logged, err := NewDouyinLiveWithOptions("456", nil, Options{Cookie: "ttwid=synthetic-explicit", GuestTTWID: provider})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer logged.Close()
++	if err = logged.prepareRequestContextLocked(context.Background()); err != nil || calls != 1 || logged.cookieValue("ttwid") != "synthetic-explicit" {
++		t.Fatal("explicit cookie was replaced")
++	}
++}
+diff --git a/cookie_context.go b/cookie_context.go
+index 681aede..0b9c1d3 100644
+--- a/cookie_context.go
++++ b/cookie_context.go
+@@ -6,6 +6,7 @@ import (
+ 	"fmt"
+ 	"sort"
+ 	"strings"
++	"time"
+ )
+ 
+ // getCookieParts 组装当前有效 Cookie 的键值片段。
+@@ -98,6 +99,21 @@ func (dl *DouyinLive) setupCookies() {
+ // fetchTTWID 请求抖音首页并提取 ttwid 及附加 Cookie。
+ // fetchTTWID requests the Douyin homepage and extracts ttwid plus extra cookies.
+ func (dl *DouyinLive) fetchTTWID(ctx context.Context) error {
++	if dl.guestTTWID != nil && !dl.hasConfiguredCookie() {
++		value, err := dl.guestTTWID(ctx, func(fetchCtx context.Context) (string, time.Time, error) {
++			err := dl.fetchTTWIDDirect(fetchCtx)
++			return dl.ttwid, dl.guestExpires, err
++		})
++		if err != nil {
++			return err
++		}
++		dl.ttwid = value
++		return nil
++	}
++	return dl.fetchTTWIDDirect(ctx)
++}
++
++func (dl *DouyinLive) fetchTTWIDDirect(ctx context.Context) error {
+ 	if ctx == nil {
+ 		ctx = context.Background()
+ 	}
+@@ -114,6 +130,12 @@ func (dl *DouyinLive) fetchTTWID(ctx context.Context) error {
+ 	cookies := make(map[string]string)
+ 	for _, c := range resp.Cookies() {
+ 		cookies[c.Name] = c.Value
++		if c.Name == "ttwid" {
++			dl.guestExpires = c.Expires
++			if c.MaxAge > 0 {
++				dl.guestExpires = time.Now().Add(time.Duration(c.MaxAge) * time.Second)
++			}
++		}
+ 	}
+ 
+ 	// 刷新额外 Cookie，避免旧值残留。
+diff --git a/danmu_room_enter.go b/danmu_room_enter.go
+new file mode 100644
+index 0000000..3e04bd5
+--- /dev/null
++++ b/danmu_room_enter.go
+@@ -0,0 +1,100 @@
++package douyinLive
++
++// LiveTap patch: try an unsigned web/enter request before the live page.
++//
++// 2026-10-16 server test: once a datacenter IP is flagged, every live page
++// (live.douyin.com/<web_rid>) returns a 6 KB captcha page, and the signed
++// web/enter request returns an empty body. An unsigned web/enter request that
++// carries the guest ttwid still returns full room data (room id, owner id,
++// status). web/enter alone provides everything the WebSocket needs (room id and
++// owner id as user_unique_id), so the live page is only a fallback. Skipping it
++// also saves about 1.3 MB per room start.
++
++import (
++	"context"
++	"fmt"
++	"strings"
++
++	"github.com/tidwall/gjson"
++)
++
++func (dl *DouyinLive) buildUnsignedRoomEnterParams() string {
++	screenWidth, screenHeight := dl.fingerprint.screenSize()
++	parts := []string{
++		"aid=" + webcastAid,
++		"app_name=" + webcastAppName,
++		"live_id=" + webcastLiveID,
++		"device_platform=" + webcastDevice,
++		"language=zh-CN",
++		"enter_from=web_live",
++		"cookie_enabled=true",
++		fmt.Sprintf("screen_width=%d", screenWidth),
++		fmt.Sprintf("screen_height=%d", screenHeight),
++		"browser_language=zh-CN",
++		"browser_platform=Win32",
++		"browser_name=Chrome",
++		"browser_version=" + queryEscapeValue(chromeVersionFromUserAgent(dl.userAgent)),
++		"web_rid=" + queryEscapeValue(dl.liveID),
++	}
++	return strings.Join(parts, "&")
++}
++
++// tryUnsignedRoomEnter returns a usable web/enter body, or ok=false so the caller
++// keeps the original live-page + signed web/enter flow unchanged.
++func (dl *DouyinLive) tryUnsignedRoomEnter(ctx context.Context) (string, bool) {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if dl.cookieValue("ttwid") == "" {
++		return "", false
++	}
++	headers := map[string]string{
++		"Accept":          "application/json, text/plain, */*",
++		"Accept-Encoding": "identity",
++		"Cookie":          dl.getCookieString(),
++		"Referer":         "https://live.douyin.com/" + dl.liveID,
++		"User-Agent":      dl.userAgent,
++	}
++	dl.applyProtocolHeaders(headers)
++	resp, err := dl.client.R().
++		SetContext(ctx).
++		SetHeaders(headers).
++		Get("https://live.douyin.com/webcast/room/web/enter/?" + dl.buildUnsignedRoomEnterParams())
++	if err != nil || resp == nil {
++		dl.logger.Debug("未签名 web/enter 不可用，回到直播页流程", "live_id", dl.liveID, "err", err)
++		return "", false
++	}
++	body, err := responseString(resp)
++	if err != nil || strings.TrimSpace(body) == "" || gjson.Get(body, "status_code").Int() != 0 {
++		dl.logger.Debug("未签名 web/enter 未返回可用数据，回到直播页流程", "live_id", dl.liveID, "status", resp.GetStatusCode(), "raw_len", len(body))
++		return "", false
++	}
++	if _, err = parseRoomInfo(body); err != nil {
++		return "", false
++	}
++	if _, known := parseLiveStatusFromRoomEnter(body); !known {
++		return "", false
++	}
++	return body, true
++}
++
++// applyUnsignedRoomEnter records room data and status exactly like the tail of
++// refreshRoomEnterDataAfterLivePage does for a successful web/enter body.
++func (dl *DouyinLive) applyUnsignedRoomEnter(body string) bool {
++	roomInfo, err := parseRoomInfo(body)
++	if err != nil {
++		return false
++	}
++	isLive, known := parseLiveStatusFromRoomEnter(body)
++	if !known {
++		return false
++	}
++	dl.setLiveStatus(isLive)
++	if strings.TrimSpace(roomInfo.liveName) == "" {
++		dl.logMissingLiveName("web_enter_unsigned", roomInfo)
++	}
++	dl.updateRoomInfoFromEnter(roomInfo)
++	dl.storeRoomEnterData(body)
++	dl.logger.Debug("未签名 web/enter 获取房间信息成功", "live_id", dl.liveID, "room_id", roomInfo.roomID, "is_live", isLive)
++	return true
++}
+diff --git a/douyin.go b/douyin.go
+index d0db236..2ccb573 100644
+--- a/douyin.go
++++ b/douyin.go
+@@ -51,15 +51,28 @@ type DouyinLive struct {
+ 	readyMu                sync.Mutex
+ 	readyCh                chan struct{}
+ 	readyClosed            bool
++	afterResponse          func(*http.Response) error
++	guestTTWID             GuestTTWIDProvider
++	guestExpires           time.Time
+ }
+ 
++// GuestTTWIDProvider may share anonymous identity; explicit Cookie always wins.
++// fetch uses the listener's proxy, fingerprint, hooks and request context.
++type GuestTTWIDProvider func(context.Context, func(context.Context) (string, time.Time, error)) (string, error)
++
+ // Options configures one listener. ProxyURL is fixed until the listener is disposed.
+ // Empty ProxyURL follows HTTP_PROXY/HTTPS_PROXY/NO_PROXY; empty SignProvider uses local signing.
+ type Options struct {
+-	Cookie       string
+-	ProxyURL     string
+-	SignProvider string
+-	TikHubToken  string
++	// BeforeRequest is called before every HTTP request (including redirects and
++	// retries) and WebSocket handshake. Return an error to cancel the request.
++	// The hook must honor request.Context() and must not log cookies or URLs.
++	BeforeRequest func(*http.Request) error
++	AfterResponse func(*http.Response) error
++	GuestTTWID    GuestTTWIDProvider
++	Cookie        string
++	ProxyURL      string
++	SignProvider  string
++	TikHubToken   string
+ 	// ProtocolMode 选择协议画像："web" 为默认稳定画像，"pc" 复现抖音桌面客户端且仍处于测试阶段。
+ 	// 空值使用 DefaultProtocolMode。取值非法时构造失败并返回 ErrProtocolModeInvalid。
+ 	// ProtocolMode selects the protocol profile: "web" is the stable default, while "pc"
+@@ -82,7 +95,15 @@ func NewDouyinLiveWithOptions(liveID string, logger Logger, options Options) (*D
+ 	default:
+ 		return nil, errors.New("sign provider must be local or tikhub")
+ 	}
+-	return newDouyinLiveWithProxy(liveID, logger, options.Cookie, signer, options.ProxyURL, options.ProtocolMode)
++	dl, err := newDouyinLiveWithProxy(liveID, logger, options.Cookie, signer, options.ProxyURL, options.ProtocolMode)
++	if err != nil {
++		return nil, err
++	}
++	dl.beforeRequest = options.BeforeRequest
++	dl.afterResponse = options.AfterResponse
++	dl.guestTTWID = options.GuestTTWID
++	dl.installRequestHook()
++	return dl, nil
+ }
+ 
+ // NewDouyinLive 创建使用本地签名的抖音直播监听实例。
+diff --git a/http_context.go b/http_context.go
+index 01ce537..b1e4b9e 100644
+--- a/http_context.go
++++ b/http_context.go
+@@ -171,32 +171,42 @@ func (dl *DouyinLive) prepareWebSocketContextLocked() (err error) {
+ 	}
+ 	dl.logWebSocketPreparationStep("request_context", stepStartedAt, nil)
+ 
++	// LiveTap patch: unsigned web/enter first; the live page and signed
++	// web/enter remain the fallback when it gives no usable room data.
+ 	stepStartedAt = time.Now()
+-	livePageErr := dl.fetchLivePageState()
+-	if livePageErr != nil {
+-		dl.logger.Debug("从直播间页面预取状态失败，继续请求 web/enter", logFlowArgs("room_info", "live_page_state", "live_id", dl.liveID, "endpoint", "live_page", "fallback", "web_enter", "err", livePageErr)...)
+-		dl.logWebSocketPreparationStep("live_page", stepStartedAt, livePageErr)
++	unsignedCtx, unsignedCancel := dl.requestContext()
++	unsignedBody, unsignedOK := dl.tryUnsignedRoomEnter(unsignedCtx)
++	unsignedCancel()
++	if unsignedOK && dl.applyUnsignedRoomEnter(unsignedBody) {
++		dl.logWebSocketPreparationStep("room_enter_unsigned", stepStartedAt, nil)
+ 	} else {
+-		dl.logWebSocketPreparationStep("live_page", stepStartedAt, nil)
+-	}
++		stepStartedAt = time.Now()
++		livePageErr := dl.fetchLivePageState()
++		if livePageErr != nil {
++			dl.logger.Debug("从直播间页面预取状态失败，继续请求 web/enter", logFlowArgs("room_info", "live_page_state", "live_id", dl.liveID, "endpoint", "live_page", "fallback", "web_enter", "err", livePageErr)...)
++			dl.logWebSocketPreparationStep("live_page", stepStartedAt, livePageErr)
++		} else {
++			dl.logWebSocketPreparationStep("live_page", stepStartedAt, nil)
++		}
+ 
+-	stepStartedAt = time.Now()
+-	// Always verify the current session before fetching its IM state; the page
+-	// and a recent cached web/enter response may still describe the previous live.
+-	// 先核验当前场次，再获取 IM 状态；页面和短期缓存都可能仍是上一场直播。
+-	roomCtx, roomCancel := dl.requestContext()
+-	defer roomCancel()
+-	if _, err := dl.refreshRoomEnterDataAfterLivePage(roomCtx, livePageErr); err != nil {
+-		dl.logWebSocketPreparationStep("room_enter", stepStartedAt, err)
+-		if isRoomInfoEmptyError(err) {
+-			if dl.isKnownOfflineStatus() {
+-				return ErrLiveNotStarted
++		stepStartedAt = time.Now()
++		// Always verify the current session before fetching its IM state; the page
++		// and a recent cached web/enter response may still describe the previous live.
++		// 先核验当前场次，再获取 IM 状态；页面和短期缓存都可能仍是上一场直播。
++		roomCtx, roomCancel := dl.requestContext()
++		defer roomCancel()
++		if _, err := dl.refreshRoomEnterDataAfterLivePage(roomCtx, livePageErr); err != nil {
++			dl.logWebSocketPreparationStep("room_enter", stepStartedAt, err)
++			if isRoomInfoEmptyError(err) {
++				if dl.isKnownOfflineStatus() {
++					return ErrLiveNotStarted
++				}
++				return fmt.Errorf("%w: live_id=%s: %v", ErrLiveStatusUnknown, dl.liveID, err)
+ 			}
+-			return fmt.Errorf("%w: live_id=%s: %v", ErrLiveStatusUnknown, dl.liveID, err)
++			return err
++		} else {
++			dl.logWebSocketPreparationStep("room_enter", stepStartedAt, nil)
+ 		}
+-		return err
+-	} else {
+-		dl.logWebSocketPreparationStep("room_enter", stepStartedAt, nil)
+ 	}
+ 	if dl.isKnownOfflineStatus() {
+ 		return ErrLiveNotStarted
+diff --git a/proxy_test.go b/proxy_test.go
+index d52c0d9..a3aec46 100644
+--- a/proxy_test.go
++++ b/proxy_test.go
+@@ -385,7 +385,9 @@ func TestProxyPreparationAndReconnect(t *testing.T) {
+ 	if status, err := dl.CheckLiveStatus(context.Background()); err != nil || status.Code != LiveStatusOnline {
+ 		t.Fatalf("status through proxy: %+v %v", status, err)
+ 	}
+-	for _, path := range []string{"/", "/1001", "/webcast/room/web/enter/", "/webcast/im/fetch/"} {
++	// LiveTap patch: the live page (/1001) is only a fallback once unsigned
++	// web/enter returns usable data, so it is no longer a required request here.
++	for _, path := range []string{"/", "/webcast/room/web/enter/", "/webcast/im/fetch/"} {
+ 		if _, ok := paths.Load(path); !ok {
+ 			t.Errorf("preparation did not request %s", path)
+ 		}
+diff --git a/request_hook_test.go b/request_hook_test.go
+new file mode 100644
+index 0000000..a749870
+--- /dev/null
++++ b/request_hook_test.go
+@@ -0,0 +1,63 @@
++package douyinLive
++
++import (
++	"context"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/gorilla/websocket"
++)
++
++func TestRequestHookRedirectRebuildAndCancel(t *testing.T) {
++	var count atomic.Int32
++	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path == "/redirect" {
++			http.Redirect(w, r, "/ok", http.StatusFound)
++			return
++		}
++		w.WriteHeader(204)
++	}))
++	defer ts.Close()
++	dl, err := NewDouyinLiveWithOptions("123", nil, Options{BeforeRequest: func(r *http.Request) error { count.Add(1); return r.Context().Err() }})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer dl.Close()
++	if _, err = dl.client.R().Get(ts.URL + "/redirect"); err != nil {
++		t.Fatal(err)
++	}
++	if count.Load() != 2 {
++		t.Fatalf("redirects: got %d", count.Load())
++	}
++	dl.rebuildHTTPClientAndHeaders()
++	if _, err = dl.client.R().Get(ts.URL + "/ok"); err != nil {
++		t.Fatal(err)
++	}
++	if count.Load() != 3 {
++		t.Fatalf("hook lost on rebuild: %d", count.Load())
++	}
++	dl.beforeRequest = func(r *http.Request) error { <-r.Context().Done(); return r.Context().Err() }
++	dl.rebuildHTTPClientAndHeaders()
++	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
++	defer cancel()
++	if _, err = dl.client.R().SetContext(ctx).Get(ts.URL); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("cancel: %v", err)
++	}
++}
++
++func TestRequestHookBlocksWebSocket(t *testing.T) {
++	blocked := errors.New("budget cancelled")
++	dl, err := NewDouyinLiveWithOptions("123", nil, Options{BeforeRequest: func(*http.Request) error { return blocked }})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer dl.Close()
++	_, _, err = dl.dialUpstreamWebSocket(websocket.DefaultDialer, "ws://127.0.0.1:1/", nil, 1)
++	if !errors.Is(err, blocked) {
++		t.Fatalf("handshake not gated: %v", err)
++	}
++}
+diff --git a/room_info.go b/room_info.go
+index d33b311..9107758 100644
+--- a/room_info.go
++++ b/room_info.go
+@@ -789,6 +789,10 @@ func (dl *DouyinLive) refreshRoomEnterDataWithContext(ctx context.Context) (stri
+ 		ctx = context.Background()
+ 	}
+ 	dl.logger.Debug("开始请求直播间信息", "live_id", dl.liveID)
++	// LiveTap patch: unsigned web/enter first; live page only as fallback.
++	if body, ok := dl.tryUnsignedRoomEnter(ctx); ok && dl.applyUnsignedRoomEnter(body) {
++		return body, nil
++	}
+ 	livePageErr := dl.fetchLivePageStateWithContext(ctx)
+ 	if livePageErr != nil {
+ 		dl.logger.Debug("从直播间页面预取状态失败，继续请求 web/enter", "live_id", dl.liveID, "err", livePageErr)
+@@ -1098,6 +1102,12 @@ func (dl *DouyinLive) fetchLiveStatusFromAPIWithContext(ctx context.Context) (bo
+ 		return false, err
+ 	}
+ 
++	// LiveTap patch: unsigned web/enter first; live page only as fallback.
++	if body, ok := dl.tryUnsignedRoomEnter(ctx); ok && dl.applyUnsignedRoomEnter(body) {
++		isLive, _ := parseLiveStatusFromRoomEnter(body)
++		return isLive, nil
++	}
++
+ 	livePageErr := dl.fetchLivePageStateWithContext(ctx)
+ 	if livePageErr == nil {
+ 		roomInfo := dl.roomInfoSnapshot()
+diff --git a/room_refresh_test.go b/room_refresh_test.go
+index 10ace1f..67424fd 100644
+--- a/room_refresh_test.go
++++ b/room_refresh_test.go
+@@ -54,7 +54,7 @@ func TestRoomRefreshFindsNextLiveSession(t *testing.T) {
+ 				dl.setLiveStatus(tt.previousLive)
+ 				dl.storeRoomEnterData(offlineEnter)
+ 
+-				pageCalls, enterCalls, imCalls := 0, 0, 0
++				pageCalls, enterCalls, unsignedCalls, imCalls := 0, 0, 0, 0
+ 				dl.client.WrapRoundTripFunc(func(_ req.RoundTripper) req.RoundTripFunc {
+ 					return func(request *req.Request) (*req.Response, error) {
+ 						var body []byte
+@@ -69,6 +69,12 @@ func TestRoomRefreshFindsNextLiveSession(t *testing.T) {
+ 							}
+ 							body = []byte(tt.page)
+ 						case "/webcast/room/web/enter/":
++							if request.URL.Query().Get("msToken") == "" {
++								// LiveTap patch: unsigned web/enter is tried before the live page.
++								unsignedCalls++
++								body = []byte(tt.enter)
++								break
++							}
+ 							enterCalls++
+ 							wantRoomID := ""
+ 							if tt.page == onlinePage {
+@@ -121,10 +127,18 @@ func TestRoomRefreshFindsNextLiveSession(t *testing.T) {
+ 				if !errors.Is(err, wantErr) || live != tt.wantLive {
+ 					t.Fatalf("live=%v err=%v, want live=%v err=%v", live, err, tt.wantLive, wantErr)
+ 				}
+-				if pageCalls != 1 {
+-					t.Errorf("page requests=%d, want 1", pageCalls)
++				// A usable unsigned web/enter answer makes the live page unnecessary.
++				wantPageCalls := 1
++				if strings.TrimSpace(tt.enter) != "" {
++					wantPageCalls = 0
++				}
++				if pageCalls != wantPageCalls {
++					t.Errorf("page requests=%d, want %d", pageCalls, wantPageCalls)
++				}
++				if unsignedCalls == 0 {
++					t.Error("unsigned web/enter was not tried first")
+ 				}
+-				if !(api == "status" && tt.page == onlinePage) && enterCalls == 0 {
++				if !(api == "status" && tt.page == onlinePage) && enterCalls+unsignedCalls == 0 {
+ 					t.Error("refresh skipped web/enter")
+ 				}
+ 				if tt.wantLive && dl.GetRoomID() != newRoom {
+diff --git a/session_profile.go b/session_profile.go
+index 12df012..2cf66ae 100644
+--- a/session_profile.go
++++ b/session_profile.go
+@@ -13,6 +13,7 @@ import (
+ // sessionProfile 统一持有一次直播会话使用的浏览器画像和相关资源。
+ // sessionProfile owns the browser identity and resources used by one live session.
+ type sessionProfile struct {
++	beforeRequest       func(*http.Request) error
+ 	ttwid               string
+ 	msToken             string
+ 	userAgent           string
+@@ -121,6 +122,7 @@ func newHTTPClient(userAgent string, proxy proxyPolicy) *req.Client {
+ func (dl *DouyinLive) rebuildHTTPClientAndHeaders() {
+ 	oldClient := dl.client
+ 	dl.client = newHTTPClient(dl.userAgent, dl.proxy)
++	dl.installRequestHook()
+ 	dl.headers = make(http.Header)
+ 	dl.headers.Set("User-Agent", dl.userAgent)
+ 	// 头集合被重建后必须重新注入协议画像头，否则 PC 专有指纹会丢失。
+@@ -130,6 +132,33 @@ func (dl *DouyinLive) rebuildHTTPClientAndHeaders() {
+ 	closeHTTPClientIdleConnections(oldClient)
+ }
+ 
++func (dl *DouyinLive) installRequestHook() {
++	if dl.beforeRequest == nil && dl.afterResponse == nil {
++		return
++	}
++	hook := dl.beforeRequest
++	dl.client.GetTransport().WrapRoundTripFunc(func(next http.RoundTripper) req.HttpRoundTripFunc {
++		return func(r *http.Request) (*http.Response, error) {
++			if hook != nil {
++				if err := hook(r); err != nil {
++					return nil, err
++				}
++			}
++			response, err := next.RoundTrip(r)
++			if response != nil && dl.afterResponse != nil {
++				response.Request = r
++				if hookErr := dl.afterResponse(response); hookErr != nil {
++					if response.Body != nil {
++						response.Body.Close()
++					}
++					return nil, hookErr
++				}
++			}
++			return response, err
++		}
++	})
++}
++
+ // closeHTTPClientIdleConnections 关闭 req 客户端保留的 HTTP/1.1、HTTP/2 和 HTTP/3 空闲连接。
+ // closeHTTPClientIdleConnections closes idle HTTP/1.1, HTTP/2, and HTTP/3 connections retained by req.
+ func closeHTTPClientIdleConnections(client *req.Client) {
+diff --git a/websocket_connection.go b/websocket_connection.go
+index ff723ef..918a628 100644
+--- a/websocket_connection.go
++++ b/websocket_connection.go
+@@ -62,6 +62,15 @@ func (dl *DouyinLive) startWebSocket() error {
+ func (dl *DouyinLive) dialUpstreamWebSocket(dialer *websocket.Dialer, url string, headers http.Header, attempt int) (*websocket.Conn, *http.Response, error) {
+ 	ctx, cancel := dl.requestContext()
+ 	defer cancel()
++	if dl.beforeRequest != nil {
++		r, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
++		if err != nil {
++			return nil, nil, err
++		}
++		if err = dl.beforeRequest(r); err != nil {
++			return nil, nil, err
++		}
++	}
+ 	roomInfo := dl.roomInfoSnapshot()
+ 	dl.logger.Info("开始建立上游 WebSocket",
+ 		logFlowArgs("ws", "dial",
+@@ -109,6 +118,14 @@ func (dl *DouyinLive) dialUpstreamWebSocket(dialer *websocket.Dialer, url string
+ 		configured.NetDialTLSContext = watchDial(configured.NetDialTLSContext)
+ 	}
+ 	conn, response, err := configured.DialContext(ctx, url, headers)
++	if response != nil && dl.afterResponse != nil {
++		if hookErr := dl.afterResponse(response); hookErr != nil {
++			if conn != nil {
++				_ = conn.Close()
++			}
++			return nil, response, hookErr
++		}
++	}
+ 	if ctx.Err() != nil {
+ 		if conn != nil {
+ 			_ = conn.Close()

@@ -1,0 +1,13 @@
+.git
+A-maintenance
+CLAUDE.md
+**/node_modules
+**/dist
+**/.env*
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.log
+**/*.exe
+**/*.png
+**/test-results

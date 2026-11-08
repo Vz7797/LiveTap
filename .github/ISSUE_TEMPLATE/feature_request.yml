@@ -1,0 +1,22 @@
+name: 功能建议
+description: 新功能或对现有行为的改进
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 现在哪里不方便、缺什么？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议的做法
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 影响范围
+      options:
+        - label: 需要修改设计文档（docs/design.md）
+        - label: 会影响北向接口或接入方

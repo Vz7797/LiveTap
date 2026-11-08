@@ -1,0 +1,99 @@
+package douyinLive
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestBrowserFingerprintIsCoherentAndMappedToJS(t *testing.T) {
+	profile := newBrowserFingerprintWithReader(bytes.NewReader(bytes.Repeat([]byte{0x2a}, 128)))
+	if profile.Preset == "" || profile.ID == "" || profile.ScreenWidth <= 0 || profile.ScreenHeight <= 0 {
+		t.Fatalf("invalid profile: %#v", profile)
+	}
+	if profile.InnerWidth >= profile.OuterWidth || profile.InnerHeight >= profile.OuterHeight {
+		t.Fatalf("inner/outer dimensions are inconsistent: %#v", profile)
+	}
+	if profile.OuterWidth > profile.ScreenWidth || profile.OuterHeight > profile.AvailHeight {
+		t.Fatalf("outer/screen dimensions are inconsistent: %#v", profile)
+	}
+	if profile.DeviceMemory <= 0 || profile.HardwareConcurrency <= 0 || profile.WebGLRenderer == "" {
+		t.Fatalf("hardware profile is incomplete: %#v", profile)
+	}
+
+	jsProfile := profile.jsProfile()
+	if jsProfile.ID != profile.ID || jsProfile.ScreenWidth != profile.ScreenWidth || jsProfile.WebGLRenderer != profile.WebGLRenderer {
+		t.Fatalf("JS profile mismatch: root=%#v js=%#v", profile, jsProfile)
+	}
+}
+
+// TestHTTPUserAgentsUsePCClientProfile 校验 PC 协议画像固定使用抖音桌面客户端 UA。
+// 客户端协议改造后 PC 画像不再轮换通用浏览器 UA：抓包实测客户端全程只用同一个 UA。
+// TestHTTPUserAgentsUsePCClientProfile verifies the PC profile is pinned to the desktop client UA.
+func TestHTTPUserAgentsUsePCClientProfile(t *testing.T) {
+	userAgents := ProtocolModePC.userAgents()
+	if len(userAgents) != 1 {
+		t.Fatalf("PC 画像 UA 池应只有 1 个候选，实际 %d 个", len(userAgents))
+	}
+	userAgent := userAgents[0]
+	if userAgent != pcClientUserAgent() {
+		t.Fatalf("UA 不是 PC 客户端 UA: %q", userAgent)
+	}
+	for _, marker := range []string{
+		"douyin/" + pcClientAppVersion,
+		"awemePcClient/" + pcClientAppVersion,
+		"buildId/" + pcClientBuildID,
+		"osName/Windows",
+	} {
+		if !strings.Contains(userAgent, marker) {
+			t.Fatalf("UA 缺少客户端标识 %q: %q", marker, userAgent)
+		}
+	}
+	// 底层 req 的 TLS/HTTP2 画像仍是 Chrome 133，与 UA 声明的 136 存在已知版本差，
+	// 属于传输层指纹的独立优化项，这里只记录不断言相等。
+	// The underlying req transport profile is still Chrome 133; the gap with the UA-declared
+	// 136 is a known residual item and is logged rather than asserted.
+	t.Logf("UA Chrome 主版本=%s，传输层画像主版本=%s（已知残余差异）",
+		chromeMajorVersionFromUserAgent(userAgent), httpImpersonationChromeMajor)
+
+	// Web 画像必须保留改造前的多 UA 轮换能力。
+	// The Web profile must keep its pre-existing multi-UA rotation.
+	if len(ProtocolModeWeb.userAgents()) < 2 {
+		t.Fatal("Web 画像应保留至少 2 个 UA 候选")
+	}
+}
+
+func TestSessionProfilesRotateFingerprint(t *testing.T) {
+	first := newSessionProfile(ProtocolModeWeb, "ua-a", staticWebsocketSigner{signature: "sig"}, "", proxyPolicy{})
+	defer first.close()
+	second := newSessionProfile(ProtocolModeWeb, "ua-b", staticWebsocketSigner{signature: "sig"}, "", proxyPolicy{})
+	defer second.close()
+	if first.fingerprint.ID == "" || second.fingerprint.ID == "" {
+		t.Fatal("session fingerprint id is empty")
+	}
+	if first.fingerprint.ID == second.fingerprint.ID {
+		t.Fatalf("two sessions reused fingerprint id %q", first.fingerprint.ID)
+	}
+}
+
+func TestBrowserFingerprintFlowsIntoHTTPAndWebSocketParams(t *testing.T) {
+	dl, err := newDouyinLive("room-short-id", nil, "", staticWebsocketSigner{signature: "sig"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dl.Dispose()
+	dl.fingerprint.ScreenWidth = 1536
+	dl.fingerprint.ScreenHeight = 864
+	dl.updateRoomInfo("room-id", "user-id", "name", "title", "")
+
+	if params := dl.buildRoomEnterParams(); !strings.Contains(params, "screen_width=1536") || !strings.Contains(params, "screen_height=864") {
+		t.Fatalf("room enter params did not use session fingerprint: %s", params)
+	}
+	if params := dl.buildInitialIMFetchParams(dl.roomInfoSnapshot(), "token"); !strings.Contains(params, "screen_width=1536") || !strings.Contains(params, "screen_height=864") {
+		t.Fatalf("im/fetch params did not use session fingerprint: %s", params)
+	}
+	wsParams := newWebsocketURLParamsWithScreen(dl.roomInfoSnapshot(), dl.userAgent, "cursor", "ext", "sig", 1536, 864).QueryString()
+	if !strings.Contains(wsParams, "screen_width=1536") || !strings.Contains(wsParams, "screen_height=864") {
+		t.Fatalf("websocket params did not use session fingerprint: %s", wsParams)
+	}
+}

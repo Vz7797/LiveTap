@@ -1,0 +1,36 @@
+name: 问题报告
+description: 采集异常、界面错误、接口不符合文档等
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请勿在这里粘贴密码、Cookie、API Key 或服务器地址。安全问题请按 SECURITY.md 私下报告。
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 发生了什么？期望是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: 1. 打开… 2. 点击… 3. 看到…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 后台“系统设置 → 版本信息”或 /v1/node 中的 version 与 api_version
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及模块
+      options: [采集引擎, 任务与状态机, 管理后台, 北向接口 / SDK, 代理池 / 小号池, 测试实验室, 部署 / Docker, 其他]
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 后台“告警与日志”中的相关记录（已自动脱敏），或界面截图

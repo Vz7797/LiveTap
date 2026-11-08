@@ -1,0 +1,41 @@
+services:
+  collector:
+    image: livetap:${LIVETAP_IMAGE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "65532:65532"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    ports: ["127.0.0.1:8090:8090"]
+    volumes: [collector-data:/data]
+    environment:
+      LIVETAP_SECRET_KEY: "${LIVETAP_SECRET_KEY:?通过当前进程环境提供主密钥}"
+      LIVETAP_ADMIN_INITIAL_PASSWORD: "${LIVETAP_ADMIN_INITIAL_PASSWORD:-}"
+      LIVETAP_NODE_NAME: "${LIVETAP_NODE_NAME:-collector-01}"
+      LIVETAP_WS_PING_SECONDS: "${LIVETAP_WS_PING_SECONDS:-15}"
+      LIVETAP_STATUS_HEARTBEAT_SECONDS: "${LIVETAP_STATUS_HEARTBEAT_SECONDS:-60}"
+      TZ: "${TZ:-Asia/Shanghai}"
+      # The lab connects to real live rooms for load tests; keep it off in production.
+      LIVETAP_LAB_ENABLED: "${LIVETAP_LAB_ENABLED:-false}"
+      LIVETAP_UPDATE_CHECK: "${LIVETAP_UPDATE_CHECK:-true}"
+      # Behind an HTTPS reverse proxy, set this to true in the process environment.
+      LIVETAP_COOKIE_SECURE: "${LIVETAP_COOKIE_SECURE:-false}"
+      # Comma-separated CIDRs of the actual reverse proxies; empty trusts none.
+      LIVETAP_TRUSTED_PROXIES: "${LIVETAP_TRUSTED_PROXIES:-}"
+    healthcheck:
+      test: [CMD, /collector, --healthcheck]
+      interval: 15s
+      timeout: 4s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  collector-data:

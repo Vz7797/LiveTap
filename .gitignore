@@ -1,0 +1,46 @@
+# 依赖与构建产物
+node_modules/
+bin/
+web/dist/
+web/test-results/
+test-results/
+*.tsbuildinfo
+coverage/
+*.exe
+*.test
+*.out
+
+# 前端打包后嵌入后端的目录：只保留占位文件，保证新克隆时 Go 也能编译
+server/internal/webui/dist/*
+!server/internal/webui/dist/.gitkeep
+
+# Go 工作区（内核已放在 third_party，不依赖本机路径）
+go.work
+go.work.sum
+
+# 运行数据与日志
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
+
+# 凭据与本地环境（任何密钥、密码、Cookie 都不能进仓库）
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 维护资料与 AI 工作约定：只留在维护者本机，不进仓库
+A-maintenance/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+
+# 编辑器与系统文件
+.claude/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

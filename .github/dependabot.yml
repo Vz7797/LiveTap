@@ -1,0 +1,44 @@
+# 依赖更新提醒。项目要求精确版本，升级通过 Pull Request 审核后合并。
+# third_party/douyinLive 是固定基线加补丁的内核，不在此自动升级；它依赖的 req 分支
+# 必须与内核基线一致（新版本删除了内核使用的 Transport 方法），同样不自动升级。
+# 运行时跟随 Node 24 LTS：Node 镜像与 @types/node 不提主版本升级。
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories: ["/server", "/sdk/go"]
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    groups:
+      go-minor:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: github.com/jwwsjlm/douyinLive/v2
+      - dependency-name: github.com/jwwsjlm/req/v3
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    groups:
+      web-minor:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: monthly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

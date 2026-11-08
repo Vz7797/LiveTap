@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端与 SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            sdk/go/go.sum
+      - name: go vet
+        run: go -C server vet ./...
+      - name: 后端测试
+        run: go -C server test ./...
+      - name: SDK 测试
+        run: go -C sdk/go test ./...
+      - name: 内核测试（含本项目补丁）
+        run: go -C server test github.com/jwwsjlm/douyinLive/v2
+
+  engine:
+    name: 内核补丁与基线校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: 校验 third_party/douyinLive 与 v2.3.2 基线 + 补丁一致
+        run: node deploy/verify-engine.mjs
+
+  frontend:
+    name: 管理后台
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.5.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: 安装依赖
+        run: pnpm --dir web install --frozen-lockfile
+      - name: 类型检查与构建
+        run: pnpm --dir web build
+
+  docker:
+    name: 容器镜像构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [backend, engine, frontend]
+    steps:
+      - uses: actions/checkout@v7
+      - name: 构建镜像（不推送）
+        run: docker build -f deploy/Dockerfile -t livetap:ci .
+      - name: 镜像大小
+        run: docker image inspect livetap:ci --format '{{.Size}}'
