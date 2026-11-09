@@ -14,6 +14,7 @@ const requireWeb = createRequire(path.join(web, "package.json"));
 const { chromium } = requireWeb("playwright-core");
 const { createServer } = await import(pathToFileURL(requireWeb.resolve("vite")).href);
 const dist = path.join(web, "dist");
+const version = fs.readFileSync(path.join(root, "server/internal/buildinfo/VERSION"), "utf8").trim();
 const out = path.join(root, "docs/images");
 fs.mkdirSync(out, { recursive: true });
 if (!fs.existsSync(path.join(dist, "index.html"))) throw new Error("run `pnpm --dir web build` first");
@@ -34,7 +35,7 @@ const history = Array.from({ length: 24 * 60 }, (_, i) => { const at = now - (24
 const half = (offset) => Array.from({ length: 48 }, (_, i) => { const at = new Date(now).setHours(0, 0, 0, 0) - offset + i * 30 * MIN; return at > now ? 0 : Math.round(base.chat * 30 * shape(at)); });
 const data = {
   ...state,
-  node: { ...state.node, name: "node-01", version: "1.0.0", engineVersion: "v2.3.2" },
+  node: { ...state.node, name: "node-01", version, engineVersion: "v2.3.2" },
   history,
   rhythm: { today: half(0), yesterday: half(24 * 60 * MIN) },
   rollout: { running: false, paused: false, done: 0, total: 0 },
