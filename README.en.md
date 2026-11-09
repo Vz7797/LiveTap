@@ -267,7 +267,9 @@ LiveTap only receives messages that any viewer of a public live room can see. It
 
 ## Contributing
 
-Issues and suggestions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and commit conventions, and report security issues privately as described in [SECURITY.md](SECURITY.md).
+Issues, suggestions and pull requests are welcome in the open. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and commit conventions.
+
+The only exception is security vulnerabilities: please report them privately as described in [SECURITY.md](SECURITY.md), so deployed nodes are not exposed before a fix is out. Once a fixed release is published, the issue and the fix are described publicly in the release notes.
 
 ## Acknowledgements
 

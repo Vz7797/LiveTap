@@ -264,7 +264,9 @@ LiveTap 只读接收公开直播间里任何观众都能看到的消息，不发
 
 ## 参与开发
 
-欢迎提交问题和改进建议。开发流程和提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要公开提交。
+欢迎公开提交 Issue、改进建议和 Pull Request，一起把 LiveTap 做好；开发流程和提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+唯一的例外是安全漏洞：请先按 [SECURITY.md](SECURITY.md) 私下报告，避免在修复前让已部署的节点暴露在风险中；修复版本发布后，会在版本说明里公开问题和修复方式。
 
 ## 致谢
 
