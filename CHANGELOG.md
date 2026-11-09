@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+## [1.0.2] — 2026-11-09
+
+### 变更
+
+- 以 [MIT 许可](LICENSE) 开源。
+- 依赖升级：SQLite 驱动 modernc.org/sqlite 1.61.0 → 1.61.1；管理后台 @tanstack/react-query 5.106.1、lucide-react 1.69.0、motion 14.9.1、Tailwind CSS 4.3.4、Vite 8.3.6、@vitejs/plugin-react 6.2.1；镜像构建用的 Node 24 基础镜像更新到最新补丁。
+
 ## [1.0.1] — 2026-11-09
 
 ### 修复

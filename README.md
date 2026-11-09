@@ -14,7 +14,7 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 ![API](https://img.shields.io/badge/API-v1-6E56CF)
-![License](https://img.shields.io/badge/license-proprietary-lightgrey)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 简体中文 | [English](README.en.md)
 
@@ -275,4 +275,4 @@ LiveTap 只读接收公开直播间里任何观众都能看到的消息，不发
 
 ## 许可
 
-本项目目前为私有软件，保留所有权利，见 [LICENSE](LICENSE)。
+本项目采用 [MIT 许可](LICENSE)。第三方组件仍适用各自的许可，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

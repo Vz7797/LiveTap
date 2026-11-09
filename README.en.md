@@ -14,7 +14,7 @@ streams them to your own services over a standard HTTP + WebSocket API, and ship
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 ![API](https://img.shields.io/badge/API-v1-6E56CF)
-![License](https://img.shields.io/badge/license-proprietary-lightgrey)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [简体中文](README.md) | English
 
@@ -278,4 +278,4 @@ All third-party components and their licenses are listed in [THIRD_PARTY_NOTICES
 
 ## License
 
-LiveTap is currently proprietary software; all rights reserved. See [LICENSE](LICENSE).
+LiveTap is released under the [MIT License](LICENSE). Third-party components remain under their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
