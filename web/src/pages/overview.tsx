@@ -28,7 +28,7 @@ import { Avatar, Card, CardHeader, IconTile, Meter, Num, PageHeader, StatusPill,
 import { Tabs, TabsList, TabsTrigger } from "@/components/motion/tabs";
 import { Gauge } from "@/components/charts";
 import { fmtAgo, fmtBytesPerSec, fmtClock, fmtDuration, fmtNum } from "@/lib/format";
-import { MSG_TYPES, STATUS_META, TYPE_META, isAbnormal, type MsgType, type RoomStatus } from "@/lib/meta";
+import { MSG_TYPES, PRE_LIVE, STATUS_META, TYPE_META, isAbnormal, isActive, isLive, type MsgType, type RoomStatus } from "@/lib/meta";
 import { TONE } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { useHistory } from "@/data/detail";
@@ -95,7 +95,7 @@ function NodeCooldown() {
 function HeroCard() {
   const node = useSim((s) => s.node);
   const today = useSim((s) => MSG_TYPES.reduce((sum, type) => sum + s.totals[type], 0));
-  const live = useSim((s) => s.rooms.filter((r) => r.status === "collecting").length);
+  const live = useSim((s) => s.rooms.filter((r) => isLive(r.status)).length);
   const perMin = useSim((s) => {
     const last = s.series[s.series.length - 1]?.v;
     return last ? MSG_TYPES.reduce((a, t) => a + last[t], 0) : 0;
@@ -256,7 +256,7 @@ function CountCard({ kind }: { kind: "collecting" | "waiting" | "abnormal" }) {
       };
     }
     if (kind === "waiting") {
-      const list = by(["waiting", "probing", "connecting"]);
+      const list = by(PRE_LIVE);
       return {
         label: "等待开播",
         icon: MoonStar,
@@ -308,7 +308,7 @@ function CountCard({ kind }: { kind: "collecting" | "waiting" | "abnormal" }) {
 function CapacityCard() {
   const rooms = useSim((s) => s.rooms);
   const node = useSim((s) => s.node);
-  const active = rooms.filter((r) => r.status !== "stopped" && r.status !== "notfound");
+  const active = rooms.filter((r) => isActive(r.status));
   const groups: { status: RoomStatus; n: number }[] = (["collecting", "reconnecting", "connecting", "probing", "waiting", "risk"] as RoomStatus[])
     .map((s) => ({ status: s, n: active.filter((r) => r.status === s).length }))
     .filter((g) => g.n > 0);
@@ -565,7 +565,7 @@ function RadarCard() {
 function ResourceCard() {
   const node = useSim((s) => s.node);
   const rooms = useSim((s) => s.rooms);
-  const activeRooms = rooms.filter((r) => r.status !== "stopped" && r.status !== "notfound").length;
+  const activeRooms = rooms.filter((r) => isActive(r.status)).length;
   const down = fmtBytesPerSec(node.downKBs);
   const up = fmtBytesPerSec(node.upKBs);
   const upHist = node.upHist ?? [];
@@ -643,7 +643,7 @@ function TopRoomsCard() {
   const rooms = useSim((s) => s.rooms);
   const top = useMemo(
     // 按在线人数排：比每分钟消息数稳定得多，名次不会每次刷新都乱跳
-    () => [...rooms].filter((r) => r.status === "collecting").sort((a, b) => b.online - a.online || b.msgPerMin - a.msgPerMin).slice(0, 5),
+    () => [...rooms].filter((r) => isLive(r.status)).sort((a, b) => b.online - a.online || b.msgPerMin - a.msgPerMin).slice(0, 5),
     [rooms],
   );
   const max = Math.max(1, ...top.map((r) => r.online));

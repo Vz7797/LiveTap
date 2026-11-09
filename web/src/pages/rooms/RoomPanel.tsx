@@ -36,7 +36,7 @@ import { LiveFeed } from "@/components/feed";
 import { Avatar, IconButton, IconTile, Num, PillButton, StatusPill, Tag } from "@/components/kit";
 import { Segmented, ToggleChip } from "@/components/kit/form";
 import { fmtAgo, fmtClock, fmtNum } from "@/lib/format";
-import { MSG_TYPES, SOURCE_META, STATUS_META, TYPE_META, withFallback, type MsgType, type Tone } from "@/lib/meta";
+import { MSG_TYPES, SOURCE_META, STATUS_META, TYPE_META, isFinal, isLive, withFallback, type MsgType, type Tone } from "@/lib/meta";
 import { TONE } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { sim } from "@/data/runtime";
@@ -136,7 +136,7 @@ function PanelHeader({ room, onClose }: { room: Room; onClose: () => void }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [copied, setCopied] = useState(false);
   const m = STATUS_META[room.status];
-  const live = room.status === "collecting";
+  const live = isLive(room.status);
   const stopped = room.status === "stopped";
   const ended = room.status === "ended";
   const silentFor = Math.round((Date.now() - room.lastMsgAt) / 1000);
@@ -144,7 +144,7 @@ function PanelHeader({ room, onClose }: { room: Room; onClose: () => void }) {
   return (
     <div className="relative shrink-0 overflow-hidden px-5 pt-5 pb-4">
       <div className="relative flex items-start gap-3.5">
-        <Avatar name={room.name} src={room.avatar} seed={room.liveId} size={56} live={live} dim={room.status === "notfound" || stopped || ended} />
+        <Avatar name={room.name} src={room.avatar} seed={room.liveId} size={56} live={live} dim={isFinal(room.status)} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold">{room.name}</h2>
@@ -321,8 +321,8 @@ function RoomFeed({ room }: { room: Room }) {
         messages={shown}
         limit={40}
         resetKey={`${room.liveId}|${types.join()}`}
-        emptyTitle={room.status === "collecting" ? "正在等待新消息…" : "当前未在采集"}
-        emptyDesc={room.status === "collecting" ? "冷清直播间的弹幕可能很少，在线人数等系统消息仍在持续推送" : "直播间开播并连接成功后，这里会实时显示消息"}
+        emptyTitle={isLive(room.status) ? "正在等待新消息…" : "当前未在采集"}
+        emptyDesc={isLive(room.status) ? "冷清直播间的弹幕可能很少，在线人数等系统消息仍在持续推送" : "直播间开播并连接成功后，这里会实时显示消息"}
       />
     </div>
   );

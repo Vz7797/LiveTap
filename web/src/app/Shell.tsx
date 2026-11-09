@@ -36,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fmtAgo, fmtDuration } from "@/lib/format";
-import { STATUS_META, isAbnormal, type Tone } from "@/lib/meta";
+import { STATUS_META, isAbnormal, isLive, type Tone } from "@/lib/meta";
 import { TONE } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { useSim } from "@/data/runtime";
@@ -108,7 +108,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
 function SidebarBody({ collapsed, onCollapse, mobile }: { collapsed: boolean; onCollapse?: () => void; mobile?: boolean }) {
   const { page } = useRoute();
-  const collecting = useSim((s) => s.rooms.filter((r) => r.status === "collecting").length);
+  const collecting = useSim((s) => s.rooms.filter((r) => isLive(r.status)).length);
   const incidents = useSim((s) => s.incidents);
   const badges = useMemo<Partial<Record<PageKey, { n: number; tone: "ok" | "err" | "warn" }>>>(() => {
     const open = incidents.filter((i) => !i.acked).length;
@@ -231,7 +231,7 @@ function SidebarBody({ collapsed, onCollapse, mobile }: { collapsed: boolean; on
 
 function SidebarNode() {
   const node = useSim((s) => s.node);
-  const collecting = useSim((s) => s.rooms.filter((r) => r.status === "collecting").length);
+  const collecting = useSim((s) => s.rooms.filter((r) => isLive(r.status)).length);
   const cooling = !!node.cooldown?.active;
   const health = node.health ?? 100;
   const state = cooling

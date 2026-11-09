@@ -23,6 +23,8 @@ export interface DropStats {
 export interface Room {
   roomId?: string;
   reason?: string;
+  /** 机器可读的原因码，取值见 docs/api.md */
+  reasonCode?: string;
   noData?: boolean;
   drops?: DropStats;
   options?: import("@/components/collector-options").PublicOptions;

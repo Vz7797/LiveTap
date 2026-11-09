@@ -16,7 +16,7 @@ import { Sparkline } from "@/components/charts";
 import { Avatar, Num, StatusPill, Tag } from "@/components/kit";
 import { Checkbox } from "@/components/ui/checkbox";
 import { fmtAgo } from "@/lib/format";
-import { SOURCE_META, STATUS_META, STATUS_ORDER } from "@/lib/meta";
+import { SOURCE_META, STATUS_META, STATUS_ORDER, isFinal, isLive } from "@/lib/meta";
 import { cn } from "@/lib/utils";
 import { usePool } from "@/components/resource-pool";
 import type { Room } from "@/data/types";
@@ -74,7 +74,7 @@ export function RoomTable({
         accessorFn: (r) => r.name,
         cell: ({ row: { original: r } }) => (
           <div className="flex min-w-[200px] items-center gap-3">
-            <Avatar name={r.name} src={r.avatar} seed={r.liveId} size={34} live={r.status === "collecting"} dim={r.status === "stopped" || r.status === "notfound" || r.status === "ended"} />
+            <Avatar name={r.name} src={r.avatar} seed={r.liveId} size={34} live={isLive(r.status)} dim={isFinal(r.status)} />
             <div className="min-w-0">
               <div className="truncate font-medium">{r.name}</div>
               <div className="num text-[11px] text-muted-foreground">{r.liveId}</div>
@@ -102,9 +102,9 @@ export function RoomTable({
         cell: ({ row: { original: r } }) => (
           <div className="flex items-center gap-3">
             <span className="w-12 text-right">
-              {r.status === "collecting" ? <Num value={r.msgPerMin} className="font-medium" /> : <span className="text-faint">—</span>}
+              {isLive(r.status) ? <Num value={r.msgPerMin} className="font-medium" /> : <span className="text-faint">—</span>}
             </span>
-            <Sparkline data={r.spark} tone={r.status === "collecting" ? "idle" : STATUS_META[r.status].tone} height={26} className="w-24" strokeWidth={1.5} />
+            <Sparkline data={r.spark} tone={isLive(r.status) ? "idle" : STATUS_META[r.status].tone} height={26} className="w-24" strokeWidth={1.5} />
           </div>
         ),
       },
@@ -149,7 +149,7 @@ export function RoomTable({
         header: "最近消息",
         accessorFn: (r) => r.lastMsgAt,
         cell: ({ row: { original: r } }) => (
-          <span className="text-xs text-muted-foreground">{r.status === "collecting" ? fmtAgo(r.lastMsgAt) : "—"}</span>
+          <span className="text-xs text-muted-foreground">{isLive(r.status) ? fmtAgo(r.lastMsgAt) : "—"}</span>
         ),
       },
     ],

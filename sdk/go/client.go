@@ -88,11 +88,15 @@ type SubscribeRequest struct {
 	EventTypes  []string `json:"event_types,omitempty"`
 	Options     Options  `json:"options"`
 }
+
+// RoomStatus is one room's current state. State and ReasonCode are stable,
+// machine-readable values (listed in docs/api.md); Reason is text for people.
 type RoomStatus struct {
-	LiveID string `json:"live_id"`
-	RoomID string `json:"room_id"`
-	State  string `json:"state"`
-	Reason string `json:"reason"`
+	LiveID     string `json:"live_id"`
+	RoomID     string `json:"room_id"`
+	State      string `json:"state"`
+	Reason     string `json:"reason"`
+	ReasonCode string `json:"reason_code"`
 }
 type Subscription struct {
 	ID          string     `json:"id"`

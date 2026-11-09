@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { fmtNum } from "@/lib/format";
-import { MSG_TYPES, TYPE_META, type MsgType } from "@/lib/meta";
+import { MSG_TYPES, TYPE_META, isLive, type MsgType } from "@/lib/meta";
 import { TONE } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { useSim } from "@/data/runtime";
@@ -80,7 +80,7 @@ export function MessagesPage() {
     return c;
   }, [feed]);
 
-  const liveRooms = rooms.filter((r) => r.status === "collecting");
+  const liveRooms = rooms.filter((r) => isLive(r.status));
 
   const exportAs = (fmt: "json" | "csv") => {
     const rows = filtered.slice(0, 100);

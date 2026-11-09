@@ -8,7 +8,7 @@ import { Avatar, Card, CardHeader, IconTile, Meter, Num, PageHeader, PillButton,
 import { useProgressiveCount } from "@/lib/hooks/use-progressive-count";
 import { Field, SearchInput, Segmented, TextInput } from "@/components/kit/form";
 import { Switch } from "@/components/motion/switch";
-import type { Tone } from "@/lib/meta";
+import { PRE_LIVE, isLive, type Tone } from "@/lib/meta";
 import { fmtAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { refresh, useSim } from "@/data/runtime";
@@ -272,8 +272,8 @@ function Subscriptions({ client }: { client: Client }) {
   const states = useMemo(() => {
     const c = { collecting: 0, waiting: 0, other: 0 };
     for (const { room } of rows) {
-      if (room?.status === "collecting") c.collecting++;
-      else if (room?.status === "waiting" || room?.status === "probing") c.waiting++;
+      if (room && isLive(room.status)) c.collecting++;
+      else if (room && PRE_LIVE.includes(room.status)) c.waiting++;
       else c.other++;
     }
     return c;
@@ -309,7 +309,7 @@ function Subscriptions({ client }: { client: Client }) {
                   <tr key={s.id} className="cursor-pointer border-b last:border-0 hover:bg-accent/50" onClick={() => navigate("rooms", { room: s.live_id })} style={ROW_STYLE}>
                     <td className="px-5 py-2">
                       <div className="flex min-w-0 items-center gap-2.5">
-                        <Avatar name={room?.name || s.live_id} src={room?.avatar} seed={s.live_id} size={28} live={room?.status === "collecting"} />
+                        <Avatar name={room?.name || s.live_id} src={room?.avatar} seed={s.live_id} size={28} live={!!room && isLive(room.status)} />
                         <div className="min-w-0">
                           <div className="max-w-[220px] truncate">{room?.name || "—"}</div>
                           <div className="num text-[11px] text-muted-foreground">{s.live_id}</div>
