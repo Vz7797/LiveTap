@@ -57,7 +57,7 @@ export const TYPE_META: Record<MsgType, { label: string; tone: Tone; icon: Lucid
   gift: { label: "礼物", tone: "gift", icon: Gift },
 }, (key) => ({ label: key || "其他", tone: "idle", icon: MessageSquareText }));
 
-/** 采集任务状态（设计文档 5.2） */
+/** 采集任务状态（设计文档 5.2）。取值与分类和后端 server/internal/model/roomstate.go 一一对应，测试会核对两边一致。 */
 export type RoomStatus =
   | "probing"
   | "waiting"
@@ -74,11 +74,11 @@ export const STATUS_META: Record<
   { label: string; tone: Tone; icon: LucideIcon; breathe?: boolean; hint: string }
 > = withFallback<RoomStatus, { label: string; tone: Tone; icon: LucideIcon; breathe?: boolean; hint: string }>({
   collecting: { label: "采集中", tone: "ok", icon: Waves, breathe: true, hint: "正常接收消息" },
-  waiting: { label: "等待开播", tone: "idle", icon: MoonStar, hint: "按轮询间隔检查是否开播" },
+  waiting: { label: "等待开播", tone: "idle", icon: MoonStar, hint: "未开播或刚下播，定时检查是否（重新）开播；下播 10 分钟内重开会自动接回" },
   probing: { label: "探测中", tone: "info", icon: Radar, hint: "确认是否开播" },
   connecting: { label: "连接中", tone: "chat", icon: Unplug, hint: "正在建立连接" },
-  reconnecting: { label: "重连中", tone: "chat", icon: RefreshCw, hint: "引擎内部指数退避重连" },
-  risk: { label: "状态待确认", tone: "warn", icon: ShieldAlert, hint: "上游暂时没给出明确状态（多见于刚下播）或连续失败，退避重试；节点被限制时另有冷却提示" },
+  reconnecting: { label: "重连中", tone: "chat", icon: RefreshCw, hint: "上游连接中断，正在自动重连（前几次每 15 秒一次）" },
+  risk: { label: "状态待确认", tone: "warn", icon: ShieldAlert, hint: "节点受限、探测超时或连续失败，正在退避重试；节点被限制时另有冷却提示" },
   notfound: { label: "不存在", tone: "err", icon: AlertOctagon, hint: "直播间标识无效，任务已终止" },
   stopped: { label: "已停止", tone: "idle", icon: CircleSlash, hint: "已主动停止" },
   ended: { label: "已下播", tone: "idle", icon: Power, hint: "确认下播后已停止检测，不再向抖音发请求" },
@@ -96,7 +96,16 @@ export const STATUS_ORDER: RoomStatus[] = [
   "stopped",
 ];
 
+/** 正在接收消息 */
+export const isLive = (s: RoomStatus) => s === "collecting";
+/** 需要关注：计入健康度和异常列表 */
 export const isAbnormal = (s: RoomStatus) => s === "risk" || s === "reconnecting" || s === "notfound";
+/** 已结束：不再探测也不采集，不占容量（已停止、不存在、已下播） */
+export const isFinal = (s: RoomStatus) => s === "stopped" || s === "notfound" || s === "ended";
+/** 占用节点容量：除已结束以外的全部状态 */
+export const isActive = (s: RoomStatus) => !isFinal(s);
+/** 开播前：等待开播、探测中、连接中 */
+export const PRE_LIVE: RoomStatus[] = ["waiting", "probing", "connecting"];
 
 /** 与后端一致：manual 手动添加、subscription 接入方订阅、test 测试实验室创建 */
 export type Source = "subscription" | "manual" | "test";

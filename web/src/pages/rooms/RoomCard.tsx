@@ -2,7 +2,7 @@ import { Bot, Globe2, RefreshCw, UserRound, Users } from "lucide-react";
 import { memo } from "react";
 import { Sparkline } from "@/components/charts";
 import { Avatar, Num, StatusPill, Tag } from "@/components/kit";
-import { SOURCE_META, STATUS_META, type Tone } from "@/lib/meta";
+import { SOURCE_META, STATUS_META, isFinal, isLive, type Tone } from "@/lib/meta";
 import { TONE } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import type { Room } from "@/data/types";
@@ -14,8 +14,8 @@ export const MORPH_SPRING = { type: "tween" as const, duration: 0.18, ease: "eas
 // memo：打开详情时只重渲染被点的那张卡，其余卡片不动，保证形变动画流畅
 export const RoomCard = memo(function RoomCard({ room, onOpen }: { room: Room; onOpen: (liveId: string) => void }) {
   const m = STATUS_META[room.status];
-  const live = room.status === "collecting";
-  const dead = room.status === "stopped" || room.status === "notfound" || room.status === "ended";
+  const live = isLive(room.status);
+  const dead = isFinal(room.status);
   return (
     <div
       data-room-card={room.liveId}
