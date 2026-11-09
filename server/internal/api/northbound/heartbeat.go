@@ -25,18 +25,20 @@ func (s *Service) heartbeats(now time.Time) {
 			continue
 		}
 		extra := map[string]any{
-			"code": "heartbeat", "state": status.State, "reason": status.Reason,
+			"code": "heartbeat", "state": string(status.State), "reason": status.Reason, "reason_code": status.ReasonCode,
 			"last_message_at":            status.LastMessageAt,
 			"heartbeat_interval_seconds": s.heartbeatInterval.Seconds(),
 			"node_cooldown":              cooldown.Active,
 			"cooldown_remaining_seconds": cooldown.RemainingSeconds,
 		}
 		// Cooling blocks new probes/connections, but leaves established collectors
-		// and explicitly stopped/notfound tasks in their actual states.
-		if cooldown.Active && status.Enabled && status.State != "collecting" && status.State != "stopped" && status.State != "notfound" {
-			extra["base_state"] = status.State
-			extra["state"] = "cooling"
+		// and finished (stopped, missing or ended) tasks in their actual states.
+		if cooldown.Active && status.Enabled && !status.State.Live() && !status.State.Final() {
+			extra["base_state"] = string(status.State)
+			extra["base_reason_code"] = status.ReasonCode
+			extra["state"] = string(model.StateCooling)
 			extra["reason"] = "节点冷却中，暂停新的探测和建连"
+			extra["reason_code"] = model.ReasonNodeCooldown
 		}
 		s.Rooms.Bus.Publish(model.Event{
 			Type: "status", LiveID: status.LiveID, RoomID: status.RoomID,

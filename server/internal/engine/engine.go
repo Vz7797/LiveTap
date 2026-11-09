@@ -25,7 +25,10 @@ type RoomSpec struct {
 	model.Options
 }
 type LiveStatus struct{ Code, LiveID, RoomID, Name, Title, Avatar string }
-type EngineState struct{ State, Reason string }
+
+// EngineState is a state change reported by an engine: State is a model.RoomState
+// value and Code one of the model.Reason* codes.
+type EngineState struct{ State, Code, Reason string }
 
 // Decode is deliberately executed by the room worker, never by the upstream callback.
 type RawEvent struct {

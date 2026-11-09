@@ -35,7 +35,7 @@ func (s *Service) sample(ids []string, mode string, sharing bool, size int) Samp
 		r := RoomSample{ID: id, State: v["status"].(string), Reason: v["reason"].(string), Online: v["online"].(int64), Disconnects: d["disconnects"].(uint64), Recoveries: d["reconnectRecoveryCount"].(uint64), RecoveryMS: d["reconnectDurationsMs"].([]int64), FalsePositives: d["silenceFalsePositives"].(uint64), Requests: d["requestsPerMinute"].(int), RequestsTotal: d["requestsTotal"].(uint64), Messages: v["counts"].(model.Counts), NoData: v["noData"].(bool)}
 		r.Group = "unknown"
 		r.Events, _ = v["events"].([]model.StateEvent)
-		if r.State == "collecting" {
+		if model.RoomState(r.State).Live() {
 			r.Group = "hot"
 			if r.Online <= 5 {
 				r.Group = "0-5"
@@ -44,7 +44,8 @@ func (s *Service) sample(ids []string, mode string, sharing bool, size int) Samp
 			}
 			sample.Collecting++
 		}
-		if r.State == "risk" || r.State == "reconnecting" {
+		// The lab counts rooms still trying (not missing ones) as at risk.
+		if s := model.RoomState(r.State); s == model.StateRisk || s == model.StateReconnecting {
 			sample.Risk++
 		}
 		if r.NoData {
@@ -61,7 +62,7 @@ func BeginStage(first Sample) StageResult {
 	for _, r := range first.Rooms {
 		stage.initial[r.ID] = r
 		stage.last[r.ID] = r
-		if r.State != "collecting" {
+		if !model.RoomState(r.State).Live() {
 			stage.Unconnected = append(stage.Unconnected, r)
 		}
 	}
@@ -106,7 +107,7 @@ func (s *StageResult) Finish(now time.Time) {
 			g.Messages = model.Zero()
 		}
 		g.Rooms++
-		if last.State == "collecting" {
+		if model.RoomState(last.State).Live() {
 			g.Collecting++
 		}
 		g.Disconnects += last.Disconnects - first.Disconnects

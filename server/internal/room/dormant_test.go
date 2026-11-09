@@ -72,7 +72,7 @@ func waitState(t *testing.T, m *Manager, id, state string, nudge bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		if st, ok := m.Status(id); ok && st.State == state {
+		if st, ok := m.Status(id); ok && string(st.State) == state {
 			return
 		}
 		// Only skip the poll delay; waking a probe or collection would cancel it.

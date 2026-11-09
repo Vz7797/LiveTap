@@ -8,16 +8,17 @@ import (
 )
 
 type Status struct {
-	LiveID        string     `json:"live_id"`
-	RoomID        string     `json:"room_id"`
-	State         string     `json:"state"`
-	Reason        string     `json:"reason"`
-	Source        string     `json:"-"`
-	Enabled       bool       `json:"-"`
-	Dormant       bool       `json:"-"`
-	EndedReason   string     `json:"-"`
-	WaitingSince  time.Time  `json:"-"`
-	LastMessageAt *time.Time `json:"last_message_at"`
+	LiveID        string          `json:"live_id"`
+	RoomID        string          `json:"room_id"`
+	State         model.RoomState `json:"state"`
+	Reason        string          `json:"reason"`
+	ReasonCode    string          `json:"reason_code"`
+	Source        string          `json:"-"`
+	Enabled       bool            `json:"-"`
+	Dormant       bool            `json:"-"`
+	EndedReason   string          `json:"-"`
+	WaitingSince  time.Time       `json:"-"`
+	LastMessageAt *time.Time      `json:"last_message_at"`
 }
 
 func (m *Manager) Status(id string) (Status, bool) {
@@ -27,7 +28,7 @@ func (m *Manager) Status(id string) (Status, bool) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	status := Status{LiveID: t.record.LiveID, RoomID: t.record.RoomID, State: t.state, Reason: t.reason, Source: t.record.Source, Enabled: t.record.Enabled, Dormant: t.record.Dormant(), EndedReason: t.record.EndedReason, WaitingSince: t.waitingSince}
+	status := Status{LiveID: t.record.LiveID, RoomID: t.record.RoomID, State: t.state, Reason: t.reason, ReasonCode: t.reasonCode, Source: t.record.Source, Enabled: t.record.Enabled, Dormant: t.record.Dormant(), EndedReason: t.record.EndedReason, WaitingSince: t.waitingSince}
 	if stamp := t.lastMessage.Load(); stamp != 0 {
 		at := time.UnixMilli(stamp).UTC()
 		status.LastMessageAt = &at
@@ -62,7 +63,7 @@ func (m *Manager) Capacity() (used, live int) {
 		if t.record.Enabled && !t.record.Dormant() {
 			used++
 		}
-		if t.state == "collecting" {
+		if t.state.Live() {
 			live++
 		}
 		t.mu.Unlock()
@@ -70,5 +71,5 @@ func (m *Manager) Capacity() (used, live int) {
 	return
 }
 func (m *Manager) StatusEvent(id, reason string) {
-	m.Bus.Publish(model.Event{LiveID: id, Type: "status", TS: time.Now(), ReceivedAt: time.Now(), Extra: map[string]any{"state": "stopped", "reason": reason}}, nil)
+	m.Bus.Publish(model.Event{LiveID: id, Type: "status", TS: time.Now(), ReceivedAt: time.Now(), Extra: map[string]any{"state": string(model.StateStopped), "reason": reason, "reason_code": model.ReasonStopped}}, nil)
 }

@@ -46,9 +46,9 @@ func TestMinuteRowsCountReconnectsPerMinute(t *testing.T) {
 	defer s.Close()
 	roomTask := &task{record: model.RoomRecord{LiveID: "123456789"}, state: "collecting"}
 	m := &Manager{Store: s, tasks: map[string]*task{"123456789": roomTask}}
-	roomTask.setState("reconnecting", "test")
-	roomTask.setState("collecting", "test")
-	roomTask.setState("reconnecting", "test")
+	roomTask.setState("reconnecting", "test", "test")
+	roomTask.setState("collecting", "test", "test")
+	roomTask.setState("reconnecting", "test", "test")
 	roomTask.mu.Lock()
 	roomTask.countMinute(time.Now(), 0, 1)
 	roomTask.mu.Unlock()

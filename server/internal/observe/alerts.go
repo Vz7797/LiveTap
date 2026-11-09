@@ -137,8 +137,8 @@ func (a *Alerts) Tick(now time.Time) {
 func alertConditions(views []map[string]any, capacity int, cfg AlertConfig, now time.Time) map[string]bool {
 	active, recent := 0, 0
 	for _, v := range views {
-		state := v["status"].(string)
-		if state == "stopped" || state == "notfound" {
+		// Finished tasks (stopped, missing or ended) hold no capacity and cannot fail.
+		if model.RoomState(v["status"].(string)).Final() {
 			continue
 		}
 		active++

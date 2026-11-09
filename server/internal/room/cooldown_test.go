@@ -92,13 +92,13 @@ func TestNodeCooldownPreservesLiveConnectionAndWritesOneAlert(t *testing.T) {
 
 func TestReconnectDiagnosticsDoNotCountRepeatedStatesOrManualStops(t *testing.T) {
 	task := &task{}
-	task.setState("collecting", "ready")
-	task.setState("reconnecting", "lost")
-	task.setState("reconnecting", "retry")
-	task.setState("risk", "failed")
-	task.setState("collecting", "recovered")
-	task.setState("stopped", "manual")
-	task.setState("collecting", "manual resume")
+	task.setState("collecting", "test", "ready")
+	task.setState("reconnecting", "test", "lost")
+	task.setState("reconnecting", "test", "retry")
+	task.setState("risk", "test", "failed")
+	task.setState("collecting", "test", "recovered")
+	task.setState("stopped", "test", "manual")
+	task.setState("collecting", "test", "manual resume")
 	if task.disconnects != 1 || task.reconnectRecoveryCount != 1 || len(task.reconnectDurations) != 1 {
 		t.Fatal("reconnect episodes counted incorrectly")
 	}

@@ -138,14 +138,14 @@ func (s *Snapshotter) sample() {
 		names[id] = v["name"].(string)
 		roomCounts := v["counts"].(model.Counts)
 		current[id] = roomCounts
-		state := v["status"].(string)
-		if state == "collecting" {
+		state := model.RoomState(v["status"].(string))
+		if state.Live() {
 			collecting++
 		}
-		if state != "stopped" && state != "notfound" {
+		if state.Active() {
 			active++
 		}
-		if state == "risk" || state == "reconnecting" || state == "notfound" {
+		if state.Abnormal() {
 			abnormal++
 			incidents = append(incidents, map[string]any{"id": v["liveId"], "at": v["since"], "level": "warning", "title": v["name"], "detail": v["reason"], "liveId": v["liveId"], "acked": false})
 		}

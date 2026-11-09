@@ -26,7 +26,8 @@ type task struct {
 	mu                     sync.Mutex
 	record                 model.RoomRecord
 	options                model.Options
-	state, reason          string
+	state                  model.RoomState
+	reason, reasonCode     string
 	since                  time.Time
 	ctx                    context.Context
 	cancel                 context.CancelFunc
@@ -175,7 +176,7 @@ func (m *Manager) get(id string) *task { m.mu.RLock(); defer m.mu.RUnlock(); ret
 func (m *Manager) install(r model.RoomRecord, recent []store.Minute) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	o, _ := model.Merge(m.settings.Defaults, r.Overrides)
-	t := &task{record: r, options: o, state: "probing", reason: queuedText, since: time.Now(), ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), done: make(chan struct{}), buffer: hub.NewBuffer(), minutes: map[int64]model.Counts{}, onlineMinutes: map[int64]int64{}, counts: model.Zero()}
+	t := &task{record: r, options: o, state: model.StateProbing, reason: queuedText, reasonCode: model.ReasonQueued, since: time.Now(), ctx: ctx, cancel: cancel, wake: make(chan struct{}, 1), done: make(chan struct{}), buffer: hub.NewBuffer(), minutes: map[int64]model.Counts{}, onlineMinutes: map[int64]int64{}, counts: model.Zero()}
 	t.dirtyMinutes = map[int64]bool{}
 	t.persistedMinutes = map[int64]model.Counts{}
 	t.statusEvent = func(e model.Event) { m.Bus.Publish(e, nil) }
@@ -511,28 +512,30 @@ func sleep(ctx context.Context, d time.Duration) bool {
 		return true
 	}
 }
-func (t *task) setState(state, reason string) {
+func (t *task) setState(state model.RoomState, code, reason string) {
 	t.mu.Lock()
-	if t.state == state && t.reason == reason {
+	if t.state == state && t.reason == reason && t.reasonCode == code {
 		t.mu.Unlock()
 		return
 	}
 	// A poll that only confirms nothing changed (waiting → probing → the same
 	// waiting reason) is not a new event: the state is updated, but the timeline
 	// and subscribers are not told about every check.
-	quiet := (state == "probing" && t.state == "waiting") || (state == "waiting" && t.state == "probing" && reason == t.waitReason)
-	if state == "waiting" {
+	quiet := (state == model.StateProbing && t.state == model.StateWaiting) || (state == model.StateWaiting && t.state == model.StateProbing && reason == t.waitReason)
+	if state == model.StateWaiting {
 		t.waitReason = reason
 	}
-	if state == "reconnecting" && t.state != "reconnecting" {
+	if state == model.StateReconnecting && t.state != model.StateReconnecting {
 		t.reconnects = append(t.reconnects, time.Now())
 		t.countMinute(time.Now(), 1, 0)
 	}
-	if t.state == "collecting" && state != "collecting" && state != "stopped" && state != "waiting" && state != "notfound" {
+	// Leaving collection for anything but a deliberate stop, the stream ending or a
+	// missing room counts as a disconnect.
+	if t.state.Live() && !state.Live() && state != model.StateStopped && state != model.StateWaiting && state != model.StateNotFound {
 		t.disconnects++
 		t.disconnectedAt = time.Now()
 	}
-	if state == "collecting" && !t.disconnectedAt.IsZero() {
+	if state.Live() && !t.disconnectedAt.IsZero() {
 		t.reconnectRecoveryCount++
 		t.reconnectDurations = append(t.reconnectDurations, time.Since(t.disconnectedAt).Milliseconds())
 		if len(t.reconnectDurations) > 200 {
@@ -540,28 +543,28 @@ func (t *task) setState(state, reason string) {
 		}
 		t.disconnectedAt = time.Time{}
 	}
-	if state == "stopped" || state == "waiting" || state == "notfound" || state == "ended" {
+	if state.Final() || state == model.StateWaiting {
 		t.disconnectedAt = time.Time{}
 	}
 	t.state = state
 	t.reason = reason
+	t.reasonCode = code
 	t.since = time.Now()
-	if state == "waiting" && t.waitingSince.IsZero() {
+	if state == model.StateWaiting && t.waitingSince.IsZero() {
 		t.waitingSince = t.since
 	}
-	if state != "waiting" && state != "probing" {
+	if state != model.StateWaiting && state != model.StateProbing {
 		t.waitingSince = time.Time{}
 	}
 	if quiet {
 		t.mu.Unlock()
 		return
 	}
-	kind := map[string]string{"probing": "probe", "collecting": "ready", "connecting": "online", "reconnecting": "reconnect", "waiting": "offline", "risk": "risk", "stopped": "offline", "ended": "offline", "notfound": "risk"}[state]
-	t.events = append(t.events, model.StateEvent{At: time.Now().UnixMilli(), Kind: kind, Text: reason})
+	t.events = append(t.events, model.StateEvent{At: time.Now().UnixMilli(), Kind: state.EventKind(), Text: reason})
 	if len(t.events) > 50 {
 		t.events = t.events[len(t.events)-50:]
 	}
-	e := model.Event{Type: "status", LiveID: t.record.LiveID, RoomID: t.record.RoomID, TS: t.since, ReceivedAt: t.since, Extra: map[string]any{"state": state, "reason": reason}}
+	e := model.Event{Type: "status", LiveID: t.record.LiveID, RoomID: t.record.RoomID, TS: t.since, ReceivedAt: t.since, Extra: map[string]any{"state": string(state), "reason": reason, "reason_code": code}}
 	fn := t.statusEvent
 	t.mu.Unlock()
 	if fn != nil {
@@ -624,13 +627,13 @@ func (m *Manager) supervise(t *task) {
 		id := t.record.LiveID
 		overrides := t.record.Overrides
 		if !enabled || t.record.Dormant() {
-			state, reason := "stopped", "已手动停止"
+			state, code, reason := model.StateStopped, model.ReasonStopped, "已手动停止"
 			if enabled {
-				state, reason = "ended", endedText(t.record.EndedReason)
+				state, code, reason = model.StateEnded, endedCode(t.record.EndedReason), endedText(t.record.EndedReason)
 			}
 			parkedDormant = enabled
 			t.mu.Unlock()
-			t.setState(state, reason)
+			t.setState(state, code, reason)
 			parked = true
 			if !t.wait(24 * time.Hour) {
 				return
@@ -642,7 +645,7 @@ func (m *Manager) supervise(t *task) {
 			// Resumed: show the start queue instead of the old stopped/ended state.
 			t.mu.Unlock()
 			wasLive = !parkedDormant && recentlyLive()
-			t.setState("probing", queuedText)
+			t.setState(model.StateProbing, model.ReasonQueued, queuedText)
 			t.mu.Lock()
 		}
 		o, e := model.Merge(cfg.Defaults, overrides)
@@ -651,7 +654,7 @@ func (m *Manager) supervise(t *task) {
 		}
 		if e != nil {
 			t.mu.Unlock()
-			t.setState("risk", "已分配资源不可用，请检查代理或小号")
+			t.setState(model.StateRisk, model.ReasonResourcesUnavailable, "已分配资源不可用，请检查代理或小号")
 			if !t.wait(30 * time.Second) {
 				return
 			}
@@ -666,13 +669,13 @@ func (m *Manager) supervise(t *task) {
 			spec.ShareGuestIdentity = *o.GuestSharing
 		}
 		if m.Budget.Cooldown().Active {
-			t.setState("risk", "节点冷却中，等待恢复探测")
+			t.setState(model.StateRisk, model.ReasonNodeCooldown, "节点冷却中，等待恢复探测")
 		}
 		if e = m.waitStart(ctx); e != nil {
 			cancel()
 			continue
 		}
-		t.setState("probing", "正在确认直播状态")
+		t.setState(model.StateProbing, model.ReasonProbing, "正在确认直播状态")
 		probeCtx, probeCancel := context.WithTimeout(ctx, 25*time.Second)
 		status, err := a.Probe(probeCtx, spec)
 		if errors.Is(err, engine.ErrAccessRestricted) {
@@ -703,7 +706,7 @@ func (m *Manager) supervise(t *task) {
 			t.record.Enabled = false
 			_ = m.Store.SaveRoom(t.record)
 			t.mu.Unlock()
-			t.setState("notfound", regionBlockedText)
+			t.setState(model.StateNotFound, model.ReasonRegionBlocked, regionBlockedText)
 			_ = m.Store.Incident(id, "region_blocked", regionBlockedText)
 			delay = 24 * time.Hour
 		case status.Code == "not_found":
@@ -711,7 +714,7 @@ func (m *Manager) supervise(t *task) {
 			t.record.Enabled = false
 			_ = m.Store.SaveRoom(t.record)
 			t.mu.Unlock()
-			t.setState("notfound", "上游已确认直播间不存在")
+			t.setState(model.StateNotFound, model.ReasonRoomNotFound, "上游已确认直播间不存在")
 			delay = 24 * time.Hour
 		case errors.Is(err, engine.ErrAccessUncertain) || status.Code == "offline" || status.Code == "account_no_room":
 			// No clear answer from the upstream counts as offline: in long tests it
@@ -724,10 +727,10 @@ func (m *Manager) supervise(t *task) {
 				continue
 			}
 			if wasLive {
-				t.setState("waiting", endingText())
+				t.setState(model.StateWaiting, model.ReasonEndedGrace, endingText())
 				delay = EndedPollDelay(time.Since(idle))
 			} else {
-				t.setState("waiting", "未开播，等待下一次探测")
+				t.setState(model.StateWaiting, model.ReasonNotLive, "未开播，等待下一次探测")
 				delay = PollDelay(time.Since(idle), o.PollSeconds)
 			}
 		case err != nil || status.Code == "unknown" || status.Code == "":
@@ -744,15 +747,15 @@ func (m *Manager) supervise(t *task) {
 				}
 			}
 			failures++
-			reason := "暂时无法确认直播状态，正在退避重试"
+			code, reason := model.ReasonProbeFailed, "暂时无法确认直播状态，正在退避重试"
 			delay = backoff(failures)
 			if restricted {
-				reason = "上游匿名访问受限，正在退避；可检查 Cookie 或代理配置"
+				code, reason = model.ReasonAccessRestricted, "上游匿名访问受限，正在退避；可检查 Cookie 或代理配置"
 			} else if timeout {
-				reason = "直播状态探测超时，稍后重试"
+				code, reason = model.ReasonProbeTimeout, "直播状态探测超时，稍后重试"
 				delay = ProbeTimeoutRetry
 			}
-			t.setState("risk", reason)
+			t.setState(model.StateRisk, code, reason)
 		default:
 			wasLive = true
 			started := time.Now()
@@ -772,15 +775,15 @@ func (m *Manager) supervise(t *task) {
 				t.mu.Lock()
 				delay = max(time.Second, time.Until(t.rebuilds[0].Add(30*time.Minute)))
 				t.mu.Unlock()
-				t.setState("risk", "30 分钟内已重建 3 次，等待重建额度恢复")
+				t.setState(model.StateRisk, model.ReasonRebuildLimited, "30 分钟内已重建 3 次，等待重建额度恢复")
 			} else if result == "offline" {
-				t.setState("waiting", endingText())
+				t.setState(model.StateWaiting, model.ReasonEndedGrace, endingText())
 				delay = EndedPollDelay(0)
 			} else {
 				failures++
 				delay = CollectRetryDelay(failures)
 				// The stream was live moments ago: show it as reconnecting, not unconfirmed.
-				t.setState("reconnecting", fmt.Sprintf("上游连接中断，%d 秒后重新连接", int(delay/time.Second)))
+				t.setState(model.StateReconnecting, model.ReasonConnectionDropped, fmt.Sprintf("上游连接中断，%d 秒后重新连接", int(delay/time.Second)))
 			}
 		}
 		cancel()
@@ -847,6 +850,14 @@ func EndedPollDelay(offlineFor time.Duration) time.Duration {
 
 func endingText() string {
 	return fmt.Sprintf("直播已结束，%d 分钟内未重新开播将停止检测", int(EndedGrace/time.Minute))
+}
+
+// endedCode is the reason code for a task that stopped probing for reason.
+func endedCode(reason string) string {
+	if reason == "never_live" {
+		return model.ReasonEndedNeverLive
+	}
+	return model.ReasonEndedAfterLive
 }
 
 func endedText(reason string) string {
@@ -969,7 +980,7 @@ func (m *Manager) collect(parent context.Context, t *task, a engine.Engine, spec
 			}
 			return "risk"
 		case st := <-s.states:
-			t.setState(st.State, st.Reason)
+			t.setState(model.RoomState(st.State), st.Code, st.Reason)
 		case <-q.Wake:
 			for _, raw := range q.Drain() {
 				noData = 0
@@ -1013,7 +1024,7 @@ func (m *Manager) collect(parent context.Context, t *task, a engine.Engine, spec
 			}
 			t.mu.Lock()
 			t.noData = true
-			t.reason = "无数据：主连接与旁证连接均未收到消息"
+			t.reason, t.reasonCode = "无数据：主连接与旁证连接均未收到消息", model.ReasonNoData
 			t.mu.Unlock()
 			if noData >= 3 {
 				_ = m.Store.Incident(spec.LiveID, "silence", "连续三次旁证未收到消息")
@@ -1027,7 +1038,7 @@ func (m *Manager) collect(parent context.Context, t *task, a engine.Engine, spec
 				threshold = t.silence.Threshold(now)
 			}
 			t.mu.Unlock()
-			if state == "collecting" && !m.Budget.Cooldown().Active && !checking && now.After(nextCheck) && now.Sub(time.UnixMilli(t.last.Load())) > time.Duration(threshold)*time.Second {
+			if state.Live() && !m.Budget.Cooldown().Active && !checking && now.After(nextCheck) && now.Sub(time.UnixMilli(t.last.Load())) > time.Duration(threshold)*time.Second {
 				select {
 				case m.witness <- struct{}{}:
 					checking = true
@@ -1119,6 +1130,10 @@ func (m *Manager) confirm(ctx context.Context, a engine.Engine, spec engine.Room
 func (m *Manager) consume(t *task, raw engine.RawEvent) {
 	t.mu.Lock()
 	t.silence.Observe(raw.ReceivedAt)
+	if t.noData && t.reasonCode == model.ReasonNoData {
+		// Messages are back: drop the stale “no data” reason as well.
+		t.reason, t.reasonCode = "上游连接已就绪", model.ReasonCollecting
+	}
 	t.noData = false
 	t.mu.Unlock()
 	e := raw.Decode()
@@ -1190,7 +1205,7 @@ func (m *Manager) flush(t *task) {
 	var rows []row
 	for at, c := range t.minutes {
 		if t.dirtyMinutes[at] {
-			rows = append(rows, row{at, cloneCounts(c), t.minuteIssues[at], t.state})
+			rows = append(rows, row{at, cloneCounts(c), t.minuteIssues[at], string(t.state)})
 			delete(t.dirtyMinutes, at) // a message arriving during the write marks it again
 		}
 	}
