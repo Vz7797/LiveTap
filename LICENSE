@@ -1,20 +1,21 @@
-Copyright (c) 2026 LiveTap authors (https://github.com/Vz7797/LiveTap). All rights reserved.
+MIT License
 
-This software and its source code are proprietary and confidential.
-No part of it may be copied, modified, distributed, sublicensed or used,
-in whole or in part, without prior written permission from the copyright
-holder.
+Copyright (c) 2026 LiveTap authors (https://github.com/Vz7797/LiveTap)
 
-Third-party components included in this repository remain under their own
-licenses; see THIRD_PARTY_NOTICES.md. In particular, third_party/douyinLive
-is distributed under the MIT License, whose original LICENSE file is kept in
-that directory.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-----
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-版权所有 (c) 2026 LiveTap 作者（https://github.com/Vz7797/LiveTap）。保留所有权利。
-
-本软件及其源代码为私有、保密资料。未经版权方事先书面许可，不得以任何形式
-复制、修改、分发、再许可或使用其全部或部分内容。
-
-仓库中包含的第三方组件仍适用其各自的许可，详见 THIRD_PARTY_NOTICES.md。
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,6 +1,7 @@
 {
   "name": "livetap-web",
   "private": true,
+  "license": "MIT",
   "homepage": "https://github.com/Vz7797/LiveTap",
   "repository": {
     "type": "git",
