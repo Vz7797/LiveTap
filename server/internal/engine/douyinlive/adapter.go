@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Vz7797/LiveTap/server/internal/engine"
+	"github.com/Vz7797/LiveTap/server/internal/model"
 	dl "github.com/jwwsjlm/douyinLive/v2"
 )
 
@@ -220,13 +221,13 @@ func (a *Adapter) Run(ctx context.Context, spec engine.RoomSpec, sink engine.Sin
 	})
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
-	sink.State(engine.EngineState{State: "connecting", Reason: "正在建立上游连接"})
+	sink.State(engine.EngineState{State: "connecting", Code: model.ReasonConnecting, Reason: "正在建立上游连接"})
 	e = c.Start()
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if errors.Is(e, dl.ErrLiveNotStarted) || e == nil {
-		sink.State(engine.EngineState{State: "waiting", Reason: "直播已结束或尚未开播"})
+		sink.State(engine.EngineState{State: "waiting", Code: model.ReasonUpstreamOffline, Reason: "直播已结束或尚未开播"})
 		return nil
 	}
 	return errors.New("上游连接失败，请查看房间状态后重试")
@@ -245,7 +246,7 @@ func (h *handler) Handle(_ context.Context, r slog.Record) error {
 	}
 	state := ClassifyLog(r.Message)
 	if state != "" {
-		h.sink.State(engine.EngineState{State: state, Reason: Reason(state)})
+		h.sink.State(engine.EngineState{State: state, Code: ReasonCode(state), Reason: Reason(state)})
 	}
 	return nil
 }
@@ -261,6 +262,21 @@ func ClassifyLog(msg string) string {
 		return "risk"
 	case "直播状态已结束，不进行重连", "WS 读错后 HTTP 兜底确认直播已下播，不再重连":
 		return "waiting"
+	}
+	return ""
+}
+
+// ReasonCode is the model.Reason* code for a state classified from the engine log.
+func ReasonCode(state string) string {
+	switch state {
+	case "collecting":
+		return model.ReasonCollecting
+	case "reconnecting":
+		return model.ReasonEngineReconnecting
+	case "risk":
+		return model.ReasonUpstreamFailed
+	case "waiting":
+		return model.ReasonUpstreamOffline
 	}
 	return ""
 }

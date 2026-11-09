@@ -101,6 +101,11 @@ func TestCapacityAndMassFailureBoundaries(t *testing.T) {
 	if alertConditions(views[:18], 20, cfg, now)["capacity"] {
 		t.Fatal("stopped room counted")
 	}
+	// Regression: an ended (dormant) room holds no capacity either.
+	views[17]["status"] = "ended"
+	if alertConditions(views[:18], 20, cfg, now)["capacity"] {
+		t.Fatal("ended room counted toward capacity")
+	}
 }
 
 func TestWebhookRetriesOnlySanitizedAlert(t *testing.T) {

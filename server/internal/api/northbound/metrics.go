@@ -56,7 +56,7 @@ func (s *Service) Node() map[string]any {
 	records, _ := s.Rooms.Store.Rooms()
 	for _, r := range records {
 		st, ok := s.Rooms.Status(r.LiveID)
-		if ok && (st.State == "risk" || st.State == "reconnecting" || st.State == "notfound") {
+		if ok && st.State.Abnormal() {
 			abnormal++
 		}
 	}

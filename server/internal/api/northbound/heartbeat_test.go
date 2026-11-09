@@ -143,13 +143,16 @@ func TestHeartbeatStatesLastMessageAndCooldown(t *testing.T) {
 	sink := f.source.sinks[sub.LiveID]
 	f.source.mu.Unlock()
 	for _, state := range []string{"collecting", "waiting", "probing", "reconnecting"} {
-		sink.State(engine.EngineState{State: state, Reason: "synthetic state"})
-		waitFor(t, func() bool { st, _ := f.m.Status(sub.LiveID); return st.State == state })
+		sink.State(engine.EngineState{State: state, Code: "synthetic_" + state, Reason: "synthetic state"})
+		waitFor(t, func() bool {
+			st, _ := f.m.Status(sub.LiveID)
+			return string(st.State) == state && st.ReasonCode == "synthetic_"+state
+		})
 		now = now.Add(2 * time.Second)
 		f.s.Sweep()
 		packets := heartbeatsFrom(q)
-		if len(packets) != 1 || packets[0].Event.Extra["state"] != state {
-			t.Fatal("heartbeat did not reflect current state")
+		if len(packets) != 1 || packets[0].Event.Extra["state"] != state || packets[0].Event.Extra["reason_code"] != "synthetic_"+state {
+			t.Fatal("heartbeat did not reflect current state and reason code")
 		}
 		at, ok := packets[0].Event.Extra["last_message_at"].(*time.Time)
 		if !ok || at == nil || !at.Equal(last) {
@@ -162,6 +165,9 @@ func TestHeartbeatStatesLastMessageAndCooldown(t *testing.T) {
 	packets := heartbeatsFrom(q)
 	if len(packets) != 1 || packets[0].Event.Extra["state"] != "cooling" || packets[0].Event.Extra["base_state"] != "reconnecting" || packets[0].Event.Extra["node_cooldown"] != true {
 		t.Fatal("node cooling was not visible")
+	}
+	if packets[0].Event.Extra["reason_code"] != "node_cooldown" || packets[0].Event.Extra["base_reason_code"] != "synthetic_reconnecting" {
+		t.Fatalf("cooling reason codes: %v / %v", packets[0].Event.Extra["reason_code"], packets[0].Event.Extra["base_reason_code"])
 	}
 	sink.State(engine.EngineState{State: "collecting"})
 	waitFor(t, func() bool { st, _ := f.m.Status(sub.LiveID); return st.State == "collecting" })
