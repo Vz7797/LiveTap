@@ -26,7 +26,7 @@
 
 接受 `live.douyin.com` 完整直播链接、web_rid 和可从页面确认的短号；无法可靠解析时返回错误，不生成随机 ID。`v.douyin.com` 分享短链请先打开并复制完整直播地址。
 
-任务状态：`probing`、`waiting`、`connecting`、`collecting`、`reconnecting`、`risk`、`notfound`、`stopped`、`ended`；`reason` 为当前原因，`noData` 表示静默旁证均无数据。抖音对节点所在地区不开放的直播间（页面显示“当前直播间在本区域未开放”，接口返回 `status_code=4003073`）记为 `notfound`、停止检测并留下 `region_blocked` 告警，不当作风控退避重试。直播刚结束时接口常返回 `status_code=30003`（24 小时测试中 62 间里 61 间约 10 分钟内被确认下播），按已下播处理、进入正常的下播宽限，不再显示为 `risk`。
+任务状态：`probing`、`waiting`、`connecting`、`collecting`、`reconnecting`、`risk`、`notfound`、`stopped`、`ended`（含义见[状态与原因码](#状态与原因码)）；`reason` 为当前原因，`reasonCode` 为机器可读的原因码，`noData` 表示静默旁证均无数据。抖音对节点所在地区不开放的直播间（页面显示“当前直播间在本区域未开放”，接口返回 `status_code=4003073`）记为 `notfound`、停止检测并留下 `region_blocked` 告警，不当作风控退避重试。直播刚结束时接口常返回 `status_code=30003`（24 小时测试中 62 间里 61 间约 10 分钟内被确认下播），按已下播处理、进入正常的下播宽限，不再显示为 `risk`。
 
 `ended`（已下播，停止检测）：任务仍启用，但不再向抖音发任何请求，不占容量，直到 `resume`/`reconnect` 或有新订阅。进入条件：
 
@@ -225,7 +225,7 @@ JSON 请求最大 64 KiB，拒绝未知字段和多段 JSON。ID 都是字符串
   "options": {"lease_seconds": 120, "idle_release_seconds": 3600},
   "created_at": "2026-10-16T12:00:00Z",
   "expires_at": "2026-10-16T12:02:00Z",
-  "status": {"live_id": "123456789", "room_id": "", "state": "probing", "reason": "探测中", "last_message_at": null}
+  "status": {"live_id": "123456789", "room_id": "", "state": "probing", "reason": "探测中", "reason_code": "probing", "last_message_at": null}
 }
 ```
 
@@ -264,7 +264,7 @@ Ping 默认每 15 秒一次，`LIVETAP_WS_PING_SECONDS` 可配置为 1～30 秒�
 一次 1～50 个，使用订阅响应中的规范化 `live_id` 或其完整链接，不重新解析短号、不发起上游请求。任一房间未订阅或不存在则整批 404；标识非法为 400。200 返回：
 
 ```json
-{"rooms":[{"live_id":"123456789","room_id":"upstream-room-id","state":"collecting","reason":"已连接"}]}
+{"rooms":[{"live_id":"123456789","room_id":"upstream-room-id","state":"collecting","reason":"已连接","reason_code":"collecting"}]}
 ```
 
 状态枚举沿用管理接口；`collecting` 代表正在收集，`waiting` 代表等待开播；其他状态不能直接当成离线或不存在。
@@ -318,7 +318,7 @@ Ping 默认每 15 秒一次，`LIVETAP_WS_PING_SECONDS` 可配置为 1～30 秒�
   "ts": "2026-10-16T12:01:00Z", "received_at": "2026-10-16T12:01:00Z",
   "user": {"id":"", "sec_uid":"", "nickname":"", "avatar":""}, "content": "",
   "extra": {
-    "code": "heartbeat", "state": "waiting", "reason": "未开播，等待下一次探测",
+    "code": "heartbeat", "state": "waiting", "reason": "未开播，等待下一次探测", "reason_code": "not_live",
     "last_message_at": null, "heartbeat_interval_seconds": 60,
     "node_cooldown": false, "cooldown_remaining_seconds": 0
   }
@@ -329,7 +329,8 @@ Ping 默认每 15 秒一次，`LIVETAP_WS_PING_SECONDS` 可配置为 1～30 秒�
 |---|---|
 | `extra.code=heartbeat` | 本服务生成的订阅状态心跳；因为有顶层 `subscription_id`，它是可补拉的订阅事件，不是连接控制帧 |
 | `extra.state` | 当前状态：`collecting` 采集中、`waiting` 等待开播、`probing` 探测中、`connecting/reconnecting` 连接/重连中、`risk` 状态异常、`notfound` 不存在或在节点所在地区不开放（`reason` 区分，地区限制见下）、`stopped` 已停止、`ended` 已下播并停止检测；另有下面的 `cooling` |
-| `extra.state=cooling` | 节点正在冷却，此启用任务尚未处于采集中；暂停新的探测/建连。`extra.base_state` 同时保留任务原状态，例如 `waiting`、`probing`、`risk` |
+| `extra.reason` / `extra.reason_code` | 当前原因：`reason` 是给人看的中文，可能调整措辞；`reason_code` 是稳定的机器可读代码，程序请按它判断，取值见[状态与原因码](#状态与原因码) |
+| `extra.state=cooling` | 节点正在冷却，此启用任务尚未处于采集中；暂停新的探测/建连。`extra.base_state` / `extra.base_reason_code` 同时保留任务原状态和原因码，例如 `waiting`、`probing`、`risk`；此时 `reason_code` 为 `node_cooldown` |
 | `extra.node_cooldown` / `cooldown_remaining_seconds` | 采样时节点是否冷却以及剩余秒数。已经 `collecting` 的连接保持该状态；停止/不存在任务也保持原状态，不强行改成冷却 |
 | `extra.last_message_at` | 最近收到上游消息的时间，含上游统计等消息；格式 RFC3339。未收到为 `null`，本地心跳不更新它，不跨任务重建/进程重启持久化 |
 | `ts` / `received_at` | 本次心跳生成时间；不是最近弹幕时间。补拉时保留原时间 |
@@ -338,6 +339,50 @@ Ping 默认每 15 秒一次，`LIVETAP_WS_PING_SECONDS` 可配置为 1～30 秒�
 含义是“这个房间仍由本节点管理”，不保证正在开播或上游有新消息。心跳不进入 AI 回复、不计入上游采集量、不发起抖音请求、不重置上游静默检测，也不续租或重置未开播闲置释放。它与用于确认连接/续租的 WS Ping/Pong 不同。
 
 心跳沿用正常递增 seq、订阅隔离和补拉窗口；SDK 通过 `OnEvent` 交付，成功处理后推进游标。状态属于最高优先级，不参加队列淘汰；全是状态且无法容纳新状态，或状态本身超过队列字节上限时立即断开慢连接，重连后按游标补拉。**不丢弃指发送队列策略，不是永久存储承诺**：断线超过缓存窗口、缓存容量或节点重启仍可能无法补齐，必须处理 `gap`。
+
+#### 状态与原因码
+
+任务状态变化时推送的 `status` 事件（`extra.state`、`extra.reason`、`extra.reason_code`）、上面的状态心跳和 `/v1/rooms/status:batch` 使用同一套取值。状态和原因码**只增不改**：已有的值不会改名或改变含义，新增时写进[更新日志](../CHANGELOG.md)。程序判断请用 `state` 和 `reason_code`，不要解析 `reason` 文字。
+
+| `state` | 含义 | 分类 |
+|---|---|---|
+| `probing` | 正在向抖音确认是否开播 | 开播前 |
+| `waiting` | 未开播，或刚下播、正在等它重开（10 分钟内重开会自动接回） | 开播前 |
+| `connecting` | 已开播，正在建立上游连接 | 开播前 |
+| `collecting` | 正在接收消息 | 在播 |
+| `reconnecting` | 连接中断，正在自动重连 | 异常 |
+| `risk` | 暂时无法确认：节点受限、探测超时或连续失败，退避重试 | 异常 |
+| `notfound` | 直播间不存在，或在节点所在地区不开放；任务终止 | 异常、结束 |
+| `stopped` | 被管理员暂停 | 结束 |
+| `ended` | 已下播（或手动任务长时间未开播），停止检测，不占容量 | 结束 |
+| `cooling` | 只出现在状态心跳里：节点冷却中，任务暂停探测和建连 | — |
+
+“结束”的任务不再探测或采集，也不占节点容量；其余状态都占容量。
+
+| `reason_code` | 对应状态 | 含义 |
+|---|---|---|
+| `queued` | `probing` | 排队等待启动限速 |
+| `probing` | `probing` | 正在确认直播状态 |
+| `not_live` | `waiting` | 未开播，稍后再查 |
+| `ended_grace` | `waiting` | 刚下播，等待可能的重开 |
+| `upstream_offline` | `waiting` | 采集中途上游确认已下播 |
+| `connecting` | `connecting` | 正在建立上游连接 |
+| `collecting` | `collecting` | 上游连接已就绪 |
+| `no_data` | `collecting` | 已连接，但主连接和旁证连接都收不到消息 |
+| `connection_dropped` | `reconnecting` | 采集连接结束，稍后重新连接 |
+| `engine_reconnecting` | `reconnecting` | 采集内核正在自动重连 |
+| `upstream_failed` | `risk` | 采集内核多次连接失败 |
+| `probe_failed` | `risk` | 探测失败且没有明确结论 |
+| `probe_timeout` | `risk` | 探测超时 |
+| `access_restricted` | `risk` | 遇到验证页或 403/429，节点受限 |
+| `node_cooldown` | `risk`、`cooling` | 节点冷却中，暂停新的探测和建连 |
+| `resources_unavailable` | `risk` | 分配的代理或小号不可用 |
+| `rebuild_limited` | `risk` | 30 分钟内静默重建已达 3 次 |
+| `room_not_found` | `notfound` | 上游确认直播间不存在 |
+| `region_blocked` | `notfound` | 直播间在节点所在地区不开放 |
+| `stopped` | `stopped` | 管理员暂停 |
+| `ended_after_live` | `ended` | 下播后 10 分钟内没有重开 |
+| `ended_never_live` | `ended` | 手动或测试任务长时间未开播 |
 
 #### 连接控制帧与补拉
 

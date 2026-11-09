@@ -215,6 +215,8 @@ type RoomSpec struct {
 
 ### 5.2 状态机
 
+状态、分类（在播 / 异常 / 结束 / 占容量）和原因码统一定义在 `server/internal/model/roomstate.go`，后端各模块和管理后台（`web/src/lib/meta.ts`）都按它判断，测试会核对两边与[接口文档](api.md#状态与原因码)一致。每次状态变化都带一个稳定的原因码 `reason_code`，供程序判断。
+
 ```mermaid
 stateDiagram-v2
   [*] --> 待启动
