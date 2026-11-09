@@ -93,7 +93,7 @@ func (h *logHandler) Handle(_ context.Context, r slog.Record) error {
 	r.Attrs(func(a slog.Attr) bool { attrs = append(attrs, a); return true })
 	for _, a := range attrs {
 		switch a.Key {
-		case "live_id", "state", "kind", "action", "count", "duration_ms", "cooldown_seconds", "strikes", "resource_id", "address", "cause", "trigger":
+		case "live_id", "state", "kind", "action", "count", "duration_ms", "cooldown_seconds", "strikes", "resource_id", "address", "cause", "trigger", "code", "version", "homepage":
 			// Group/LogValuer values are not expanded; unknown fields never enter disk.
 			value := a.Value.Resolve()
 			if value.Kind() == slog.KindGroup || value.Kind() == slog.KindAny {
