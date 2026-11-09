@@ -104,3 +104,28 @@ func TestLogTruncationPreservesUTF8(t *testing.T) {
 		t.Fatal("exact limit was truncated")
 	}
 }
+
+// Regression: fields added to the probe-failure and startup logs were dropped
+// because they were not on the allow list. Unknown fields stay redacted.
+func TestDiagnosticFieldsKept(t *testing.T) {
+	logs, e := NewLogs(t.TempDir(), 1<<20, 1, slog.LevelInfo)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer logs.Close()
+	logs.stdout = io.Discard
+	logger := slog.New(logs.Handler())
+	logger.Warn("直播状态探测未成功", "live_id", "123", "cause", "upstream_uncertain", "code", "status_code=4003099", "extra", "hidden")
+	logger.Info("LiveTap 启动", "version", "1.0.1", "homepage", "https://github.com/Vz7797/LiveTap")
+	probe := logs.Query("WARN", "123", "探测")
+	start := logs.Query("INFO", "", "启动")
+	if len(probe) != 1 || len(start) != 1 {
+		t.Fatalf("entries not found: %d %d", len(probe), len(start))
+	}
+	if probe[0].Fields["code"] != "status_code=4003099" || probe[0].Fields["extra"] != "[REDACTED]" {
+		t.Fatalf("probe fields: %v", probe[0].Fields)
+	}
+	if start[0].Fields["version"] != "1.0.1" || start[0].Fields["homepage"] != "https://github.com/Vz7797/LiveTap" {
+		t.Fatalf("startup fields: %v", start[0].Fields)
+	}
+}
