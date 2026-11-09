@@ -13,7 +13,7 @@ require (
 	github.com/jwwsjlm/douyinlive-proto v0.1.3
 	github.com/jwwsjlm/req/v3 v3.61.2
 	github.com/shirou/gopsutil/v4 v4.26.10
-	github.com/tidwall/gjson v1.20.0
+	github.com/tidwall/gjson v1.20.1
 	golang.org/x/crypto v0.58.0
 	golang.org/x/time v0.16.0
 	google.golang.org/protobuf v1.36.12
