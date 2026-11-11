@@ -157,6 +157,34 @@ docker compose -f deploy/compose.yaml up -d --build
 
 Open <http://127.0.0.1:8090> and sign in as `admin`. The node listens on localhost only by default; to reach it from other machines, put it behind an HTTPS reverse proxy as described in the [deployment guide](docs/deployment.md).
 
+### Run a release package
+
+[Releases](https://github.com/Vz7797/LiveTap/releases) provide packages for Linux (amd64 / arm64), Windows (amd64) and macOS (arm64). Each one unpacks to a single executable with no other dependencies. It is a background service without a GUI: set the master key first, start it, then open the admin console in a browser.
+
+Windows (open PowerShell in the folder with the program):
+
+```powershell
+# Master key: generate it on the first run, keep it in a password manager and use the same one on every start
+$bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$env:LIVETAP_SECRET_KEY = [Convert]::ToBase64String($bytes)
+# Initial admin password (at least 12 characters), needed on the first start only
+$env:LIVETAP_ADMIN_INITIAL_PASSWORD = Read-Host "Initial admin password"
+$env:LIVETAP_DATA_DIR = "$PWD\data"
+$env:LIVETAP_LISTEN = "127.0.0.1:8090"
+.\livetap.exe
+```
+
+Linux / macOS:
+
+```bash
+export LIVETAP_SECRET_KEY="$(openssl rand -base64 32)"   # keep it after the first run and reuse it
+read -rsp "Initial admin password: " LIVETAP_ADMIN_INITIAL_PASSWORD && export LIVETAP_ADMIN_INITIAL_PASSWORD
+export LIVETAP_DATA_DIR="$PWD/data" LIVETAP_LISTEN=127.0.0.1:8090
+./livetap
+```
+
+Then open <http://127.0.0.1:8090> and sign in as `admin`. The database and logs live in `LIVETAP_DATA_DIR`; it defaults to `/data`, which on Windows means `\data` at the root of the current drive. Later starts only need the same `LIVETAP_SECRET_KEY`, `LIVETAP_DATA_DIR` and `LIVETAP_LISTEN`. If the program cannot start, it says what is missing in its window.
+
 ### Build from source
 
 Requires Go 1.27, Node.js 24 and pnpm.
@@ -209,6 +237,7 @@ Common environment variables:
 | `LIVETAP_SECRET_KEY` | required | Base64 of 32 random bytes; encrypts sensitive settings |
 | `LIVETAP_ADMIN_INITIAL_PASSWORD` | required on first start | Initial admin password, at least 12 characters |
 | `LIVETAP_LISTEN` | `0.0.0.0:8090` | Main listen address |
+| `LIVETAP_DATA_DIR` | `/data` | Database and log directory |
 | `LIVETAP_ADMIN_LISTEN` | empty | Separate listen address for the admin console; bind it to an internal network |
 | `LIVETAP_NODE_NAME` | `collector-01` | Node name |
 | `LIVETAP_COOKIE_SECURE` | `false` | Set to `true` behind an HTTPS reverse proxy |

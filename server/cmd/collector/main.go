@@ -40,24 +40,41 @@ func main() {
 		return
 	}
 	if e := run(); e != nil {
-		// The detailed (redacted) cause is in the rotating log; the log is already
-		// closed here, so stderr gets a pointer for `docker logs`.
-		fmt.Fprintln(os.Stderr, "服务启动或运行失败，原因见数据目录 logs/collector.log")
+		var early startupError
+		if errors.As(e, &early) {
+			// No log exists yet, so the cause goes to the terminal. These messages
+			// never contain configuration values.
+			fmt.Fprintf(os.Stderr, "服务启动失败：%v\n运行前需要设置的环境变量和启动方法见 %s#直接运行程序包\n", early.err, buildinfo.Homepage)
+		} else {
+			// The detailed (redacted) cause is in the rotating log; the log is already
+			// closed here, so stderr gets a pointer for `docker logs`.
+			fmt.Fprintln(os.Stderr, "服务启动或运行失败，原因见数据目录 logs/collector.log")
+		}
+		waitIfDoubleClicked()
 		os.Exit(1)
 	}
 }
+
+// startupError is a failure before the rotating log exists. Its message names
+// the setting to fix and is safe to print.
+type startupError struct{ err error }
+
+func (e startupError) Error() string { return e.err.Error() }
+func (e startupError) Unwrap() error { return e.err }
+
 func run() (err error) {
 	cfg, e := config.Load()
 	if e != nil {
-		return e
+		return startupError{e}
 	}
 	var level slog.Level
 	if e = level.UnmarshalText([]byte(cfg.LogLevel)); e != nil {
-		return errors.New("LIVETAP_LOG_LEVEL 无效")
+		return startupError{errors.New("LIVETAP_LOG_LEVEL 无效")}
 	}
-	logs, e := observe.NewLogs(filepath.Join(cfg.DataDir, "logs"), 10<<20, 5, level)
+	logDir := filepath.Join(cfg.DataDir, "logs")
+	logs, e := observe.NewLogs(logDir, 10<<20, 5, level)
 	if e != nil {
-		return errors.New("无法创建轮转日志")
+		return startupError{fmt.Errorf("无法创建日志目录 %s，请用 LIVETAP_DATA_DIR 指定一个可写的数据目录", logDir)}
 	}
 	defer logs.Close()
 	slog.SetDefault(slog.New(logs.Handler()))
