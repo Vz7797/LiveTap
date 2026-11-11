@@ -154,6 +154,34 @@ docker compose -f deploy/compose.yaml up -d --build
 
 打开 <http://127.0.0.1:8090>，用户名 `admin`。默认只监听本机，要从其他机器访问，请放在 HTTPS 反向代理后面，见 [部署指南](docs/deployment.md)。
 
+### 直接运行程序包
+
+[Releases](https://github.com/Vz7797/LiveTap/releases) 里有 Linux（amd64 / arm64）、Windows（amd64）和 macOS（arm64）的程序包，解压后就是一个可执行文件，不需要安装别的东西。它是一个后台服务，没有图形界面：要先设置主密钥再启动，启动后在浏览器里打开管理后台。
+
+Windows（在程序所在文件夹打开 PowerShell）：
+
+```powershell
+# 主密钥：第一次运行时生成，保存到密码管理器，以后每次启动都要用同一个
+$bytes = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$env:LIVETAP_SECRET_KEY = [Convert]::ToBase64String($bytes)
+# 管理员初始密码（至少 12 位），只有第一次启动需要
+$env:LIVETAP_ADMIN_INITIAL_PASSWORD = Read-Host "管理员初始密码"
+$env:LIVETAP_DATA_DIR = "$PWD\data"
+$env:LIVETAP_LISTEN = "127.0.0.1:8090"
+.\livetap.exe
+```
+
+Linux / macOS：
+
+```bash
+export LIVETAP_SECRET_KEY="$(openssl rand -base64 32)"   # 第一次生成后保存好，以后每次都用它
+read -rsp "管理员初始密码: " LIVETAP_ADMIN_INITIAL_PASSWORD && export LIVETAP_ADMIN_INITIAL_PASSWORD
+export LIVETAP_DATA_DIR="$PWD/data" LIVETAP_LISTEN=127.0.0.1:8090
+./livetap
+```
+
+然后打开 <http://127.0.0.1:8090>，用户名 `admin`。数据库和日志在 `LIVETAP_DATA_DIR` 指定的目录里；不设置时默认是 `/data`，在 Windows 上就是当前盘根目录下的 `\data`。以后再启动时只需设置同一个 `LIVETAP_SECRET_KEY`、`LIVETAP_DATA_DIR` 和 `LIVETAP_LISTEN`。启动失败时，程序会直接在窗口里说明缺了什么。
+
 ### 从源码构建
 
 需要 Go 1.27、Node.js 24 和 pnpm。
@@ -206,6 +234,7 @@ _ = c.Stream(ctx, collector.StreamOptions{
 | `LIVETAP_SECRET_KEY` | 必填 | 32 字节随机值的 Base64，用来加密敏感配置 |
 | `LIVETAP_ADMIN_INITIAL_PASSWORD` | 首次必填 | 管理员初始密码，至少 12 位 |
 | `LIVETAP_LISTEN` | `0.0.0.0:8090` | 主监听地址 |
+| `LIVETAP_DATA_DIR` | `/data` | 数据库和日志目录 |
 | `LIVETAP_ADMIN_LISTEN` | 空 | 管理后台单独监听，建议只绑定内网 |
 | `LIVETAP_NODE_NAME` | `collector-01` | 节点名称 |
 | `LIVETAP_COOKIE_SECURE` | `false` | 位于 HTTPS 反向代理之后时设为 `true` |
